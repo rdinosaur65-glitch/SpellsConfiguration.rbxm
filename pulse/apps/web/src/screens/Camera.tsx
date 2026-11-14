@@ -4,9 +4,17 @@ import { refreshStreaks } from '../lib/streaks';
 import { rpc } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
 import { compressImage, uploadMedia } from '../lib/media';
+import { LIMITS, VIDEO_MIME } from '@pulse/domain';
 import { useChatList } from '../lib/live';
 
 type Facing = 'user' | 'environment';
+
+// iPhone / iPad (iPadOS reports itself as a Mac with a touch screen). There the Camera tab
+// opens Apple's own Camera (full quality, zoom, flash, Portrait, photo + video modes) and
+// brings the result back into PULSE; the in-app live camera stays available as an option.
+const IOS = typeof navigator !== 'undefined' &&
+  (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+const PREVIEW_MAX = 2048;   // photos are sent at ≤1600 px anyway; keeps a 48 MP shot from eating memory
 
 /**
  * Camera: live preview, front/back switch, torch where the device reports it, still
@@ -35,19 +43,41 @@ export function Camera() {
   const discard = useRef(false);       // drop the clip being recorded (screen hidden)
   const pickRef = useRef<HTMLInputElement>(null);
 
-  // Fallback when the live camera cannot run here (permission blocked, older iOS home-screen
-  // apps, desktop without a camera): take the photo with the phone's own camera app.
+  // A photo or video taken with the phone's own camera app (on iPhone the default; elsewhere
+  // the fallback when the live camera cannot run: permission blocked, no camera…).
   async function fromFile(file: File) {
+    if (file.type.startsWith('video/')) { await fromVideo(file); return; }
     try {
-      const bmp = await createImageBitmap(file);
+      const bmp = await createImageBitmap(file);          // applies the photo's rotation
+      const scale = Math.min(1, PREVIEW_MAX / Math.max(bmp.width, bmp.height));
       const c = document.createElement('canvas');
-      c.width = bmp.width; c.height = bmp.height;
-      c.getContext('2d')?.drawImage(bmp, 0, 0);
+      c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+      c.getContext('2d')?.drawImage(bmp, 0, 0, c.width, c.height);
       bmp.close();
       shotCanvas.current = c;
       setShot(c.toDataURL('image/jpeg', 0.9));
     } catch { showToast('That photo could not be opened.'); }
   }
+  async function fromVideo(file: File) {
+    const url = URL.createObjectURL(file);
+    const seconds = await new Promise<number>((resolve) => {
+      const v = document.createElement('video');
+      v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+      v.onloadedmetadata = () => resolve(v.duration);
+      v.onerror = () => resolve(NaN);
+      v.src = url;
+    });
+    // iPhone videos arrive as QuickTime (.mov): the same MPEG-4 family as .mp4, so they are
+    // sent as video/mp4, which every phone plays.
+    const type = !file.type || file.type === 'video/quicktime' ? 'video/mp4' : file.type;
+    const fail = (m: string) => { URL.revokeObjectURL(url); showToast(m); };
+    if (!Number.isFinite(seconds) || seconds <= 0) return fail('That video could not be opened.');
+    if (seconds > LIMITS.snap.maxVideoSeconds) return fail(`Video Snaps can be up to ${LIMITS.snap.maxVideoSeconds} seconds. Try a shorter one.`);
+    if (file.size > LIMITS.bytes.shortVideo) return fail(`That video is too large (up to ${LIMITS.bytes.shortVideo / 1024 / 1024} MB). Try a shorter one.`);
+    if (!(VIDEO_MIME as readonly string[]).includes(type)) return fail('That video format is not supported.');
+    setClip({ blob: type === file.type ? file : new Blob([file], { type }), url, seconds: Math.max(0.1, Math.round(seconds * 10) / 10) });
+  }
+  const openPhoneCamera = () => pickRef.current?.click();
   const [toast, showToast] = useToast();
 
   const stop = useCallback(() => {
@@ -192,17 +222,23 @@ export function Camera() {
       {clip && <video src={clip.url} className="shot" autoPlay loop playsInline muted data-testid="clip-preview" aria-label="Recorded video" />}
       {recording !== null && <span className="pill rec-pill" data-testid="clip-recording">● {recording}s / {MAX_CLIP_S}s</span>}
 
-      {state !== 'live' && !shot && (
+      {state !== 'live' && !shot && !clip && (
         <div className="camera-msg">
           {state === 'denied' ? <p>Camera access is blocked. Allow it in your browser's site settings, then try again.</p>
             : state === 'unsupported' ? <p>This browser can't use the camera.</p>
             : state === 'error' ? <p>The camera couldn't start. Another app may be using it.</p>
+            : IOS ? <p>Take a photo or video with your iPhone camera, then send it as a Snap.</p>
             : <p>Point, shoot, share with friends.</p>}
-          {state !== 'unsupported' && <Button busy={state === 'starting'} onClick={() => start(facing)}>Open camera</Button>}
-          {(state === 'denied' || state === 'unsupported' || state === 'error') && (
-            <Button variant="ghost" onClick={() => pickRef.current?.click()}>Use the phone's camera app</Button>
-          )}
-          <input ref={pickRef} type="file" accept="image/*" capture="environment" hidden data-testid="camera-file"
+          {IOS ? (<>
+            <Button onClick={openPhoneCamera}>Open camera</Button>
+            {state !== 'unsupported' && <Button variant="ghost" busy={state === 'starting'} onClick={() => start(facing)}>Use the camera inside PULSE</Button>}
+          </>) : (<>
+            {state !== 'unsupported' && <Button busy={state === 'starting'} onClick={() => start(facing)}>Open camera</Button>}
+            {(state === 'denied' || state === 'unsupported' || state === 'error') && (
+              <Button variant="ghost" onClick={openPhoneCamera}>Use the phone's camera app</Button>
+            )}
+          </>)}
+          <input ref={pickRef} type="file" accept="image/*,video/*" capture="environment" hidden data-testid="camera-file"
                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void fromFile(f); }} />
           <span className="pill">Nothing is recorded until you press the shutter.</span>
         </div>

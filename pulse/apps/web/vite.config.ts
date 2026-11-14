@@ -1,11 +1,43 @@
-import { defineConfig } from 'vite';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/**
+ * Pins the Content-Security-Policy in dist/_headers to this deployment's own Supabase
+ * project. A wildcard (*.supabase.co) would let injected script send a stolen session to
+ * any other project; the exact origin does not.
+ */
+function pinSupabaseOrigin(mode: string): Plugin {
+  let outDir = join(__dirname, 'dist');
+  return {
+    name: 'pulse-pin-supabase-origin',
+    apply: 'build',
+    configResolved(c) { outDir = c.build.outDir.startsWith('/') ? c.build.outDir : join(c.root, c.build.outDir); },
+    closeBundle() {
+      const file = join(outDir, '_headers');
+      if (!existsSync(file)) return;
+      const url = loadEnv(mode, __dirname, 'VITE_').VITE_SUPABASE_URL ?? '';
+      let host = '';
+      try { host = new URL(url).host; } catch { /* missing */ }
+      if (!/^[a-z0-9]+\.supabase\.co$/.test(host)) {
+        this.warn(`CSP: VITE_SUPABASE_URL (${url || 'unset'}) is not a hosted project; keeping *.supabase.co`);
+        return;
+      }
+      const pinned = readFileSync(file, 'utf8')
+        .replaceAll('https://*.supabase.co', `https://${host}`)
+        .replaceAll('wss://*.supabase.co', `wss://${host}`);
+      writeFileSync(file, pinned);
+    },
+  };
+}
+
 // Static SPA for Cloudflare Pages (free, no per-request cost). See docs/ARCHITECTURE.md §2.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
+    pinSupabaseOrigin(mode),
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
@@ -38,4 +70,4 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   preview: { port: 4173, strictPort: true },
   build: { target: 'es2022', sourcemap: false },
-});
+}));

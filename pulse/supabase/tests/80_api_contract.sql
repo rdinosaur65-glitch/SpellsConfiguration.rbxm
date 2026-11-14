@@ -82,7 +82,17 @@ begin
             = (select array_agg(x order by x) from unnest(con.conkey) x));
   perform test.ok(bad is null, 'indexed foreign keys; missing: ' || coalesce(bad, ''));
 
-  -- 10. Search works end-to-end for a signed-in user.
+  -- 10. Every client write RPC (VOLATILE, callable by users) is rate-limited, except the
+  --     owner-only admin RPCs and the one-shot account deletion.
+  select string_agg(p.proname, ', ') into bad
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.provolatile = 'v'
+    and has_function_privilege('authenticated', p.oid, 'execute')
+    and p.prosrc !~ 'rate_limit_hit'
+    and p.proname !~ '^admin_' and p.proname <> 'request_account_deletion';
+  perform test.ok(bad is null, 'write RPCs rate-limited; missing: ' || coalesce(bad, ''));
+
+  -- 11. Search works end-to-end for a signed-in user.
   u := test.new_user('rq_80a'); v := test.new_user('rq_80b');
   perform test.as_user(u);
   perform test.ok((select count(*) from public.search_users('rq_80')) = 1, 'search finds the other user');

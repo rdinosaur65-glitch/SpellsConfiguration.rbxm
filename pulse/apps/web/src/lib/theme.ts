@@ -42,7 +42,8 @@ export function applyAppearance(a: Appearance | undefined): void {
   const accent = a?.accent && /^#[0-9a-f]{6}$/i.test(a.accent) ? a.accent : '#8B5CF6';
   root.style.setProperty('--accent', accent);
   root.style.setProperty('--accent-solid', readable(accent, '#ffffff'));          // white text on it
-  root.style.setProperty('--accent-text', readable(accent, light ? '#f7f7fb' : '#0b0b10'));
+  // Accent text sits on the page and on surfaces (cards, tab bar); meet 4.5:1 on the harder one.
+  root.style.setProperty('--accent-text', readable(accent, light ? '#ffffff' : '#1e1e29'));
   root.style.setProperty('--font', FONTS[a?.font ?? 'system'] ?? FONTS.system);
   root.dataset.bubbles = a?.bubbles ?? 'rounded';
   root.dataset.reduceMotion = String(a?.reduce_motion ?? false);

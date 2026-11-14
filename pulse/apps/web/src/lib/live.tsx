@@ -4,6 +4,7 @@ import { rpc, supabase } from './supabase';
 import { errorMessage } from './errors';
 import { useAuth } from './auth';
 import type { ChatListItem } from './types';
+import { flushOutbox, setOutboxOwner } from './outbox';
 
 export interface RequestRow {
   id: string; direction: 'incoming' | 'outgoing'; user_id: string; username: string; display_name: string; created_at: string;
@@ -54,6 +55,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   // Conversation ids, as a stable key: resubscribe only when the set of chats changes.
   const convKey = useMemo(() => (chats ?? []).map((c) => c.conversation_id).sort().join(','), [chats]);
 
+  // Queued messages belong to this account only; send them on reconnect from any screen.
+  useEffect(() => {
+    setOutboxOwner(me ?? null);
+    const onOnline = () => flushOutbox();
+    window.addEventListener('online', onOnline);
+    return () => { window.removeEventListener('online', onOnline); setOutboxOwner(null); };
+  }, [me]);
+
   useEffect(() => {
     if (!me) return;
     void reloadChats(); void reloadRequests();
@@ -84,12 +93,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations',
         filter: `id=in.(${ids.slice(i, i + 100).join(',')})` }, soon);
     }
-    let first = true;
     (ch as RealtimeChannel).subscribe((status) => {
       if (status !== 'SUBSCRIBED') return;
-      // Catch up on anything missed while (re)connecting.
-      if (!first) { soon(); void reloadRequests(); }
-      first = false;
+      // Catch up on anything missed while (re)connecting — also on the first join, since a
+      // change between the initial read and the subscription would otherwise be lost.
+      soon(); void reloadRequests();
     });
     return () => { void supabase.removeChannel(ch); };
   }, [me, convKey, soon, reloadRequests]);

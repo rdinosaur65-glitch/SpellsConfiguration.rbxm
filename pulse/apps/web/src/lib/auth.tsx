@@ -23,6 +23,7 @@ const AuthContext = createContext<AuthState | null>(null);
 // Non-sensitive copy of the user's own profile + settings for the offline shell only.
 // Never chats, friends or media. Cleared on sign-out.
 const CACHE_KEY = 'pulse.me.v1';
+let lastSettingsReload = Date.now();   // module-level: survives session/token changes
 interface Cached { uid: string; profile: Profile; settings: UserSettings }
 function readCache(uid: string): Cached | null {
   try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as Cached | null; return c?.uid === uid ? c : null; }
@@ -110,10 +111,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const c = readCache(uid);
       if (c) setSettings(c.settings);
     };
-    let last = Date.now();
     const onFocus = () => {
-      if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return;
-      last = Date.now();
+      if (document.visibilityState !== 'visible' || Date.now() - lastSettingsReload < 60_000) return;
+      lastSettingsReload = Date.now();
       void load(session);
     };
     window.addEventListener('storage', onStorage);

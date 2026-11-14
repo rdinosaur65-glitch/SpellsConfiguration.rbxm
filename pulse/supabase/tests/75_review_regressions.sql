@@ -411,6 +411,14 @@ begin
   perform test.as_user(a);
   conv := public.create_direct_conversation(b);
   perform set_config('realtime.topic', 'conv:' || conv, false);
+  perform test.as_superuser();
+  begin
+    insert into realtime.messages (topic, extension, payload) values ('conv:' || conv, 'broadcast', '{"t":1}');
+  exception when others then null;   -- real Supabase: partitions may not exist for today
+  end;
+  perform test.as_user(a);
+  perform test.ok((select count(*) from realtime.messages) = (select count(*) from realtime.messages where topic = 'conv:' || conv),
+                  'member reads the topic''s rows');
   perform test.as_user(x);
   perform test.ok((select count(*) from realtime.messages) = 0, 'outsider reads nothing on the topic');
   perform test.throws($q$insert into realtime.messages (topic, extension, payload) values (realtime.topic(), 'broadcast', '{}')$q$,

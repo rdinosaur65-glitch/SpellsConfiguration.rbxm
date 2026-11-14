@@ -16,6 +16,8 @@ import { Friends } from './screens/Friends';
 const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
 const Camera = lazy(() => import('./screens/Camera').then((m) => ({ default: m.Camera })));
 
+let lastMfaRecheck = Date.now();
+
 function useNeedsMfa(sessionKey: string | undefined): [boolean | null, () => void] {
   const [needs, setNeeds] = useState<boolean | null>(null);
   const [tick, setTick] = useState(0);
@@ -33,10 +35,11 @@ function useNeedsMfa(sessionKey: string | undefined): [boolean | null, () => voi
   // and check again. Also re-check when the app comes back to the foreground.
   useEffect(() => {
     if (!sessionKey) return;
-    let last = 0;
     const recheck = (force: boolean) => {
-      if (!force && Date.now() - last < 60_000) return;
-      last = Date.now();
+      // Module-level throttle: refreshing the session changes sessionKey and re-runs this
+      // effect, so a local timestamp would reset and every foreground would refresh.
+      if (!force && Date.now() - lastMfaRecheck < 60_000) return;
+      lastMfaRecheck = Date.now();
       void supabase.auth.refreshSession().finally(() => setTick((t) => t + 1));
     };
     const onRequired = () => recheck(true);

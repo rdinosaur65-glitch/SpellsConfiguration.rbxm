@@ -1,6 +1,6 @@
 -- Two-step verification is enforced by the database once a factor is verified.
 do $$
-declare u uuid; f uuid; v uuid; c uuid;
+declare u uuid; f uuid; v uuid; c uuid; p text;
 begin
   u := test.new_user('mfa_90'); v := test.new_user('pal_90');
   perform test.befriend(u, v);
@@ -37,7 +37,11 @@ begin
   perform test.throws(format('select public.revoke_session(%L)', gen_random_uuid()), 'mfa_required', 'revoke_session');
   perform test.throws('select public.revoke_other_sessions()', 'mfa_required', 'revoke_other_sessions');
   perform test.throws('select * from public.my_profile()', 'mfa_required', 'my_profile');
-  perform test.ok((select count(*) from storage.objects where bucket_id = 'media') = 0, 'no Storage reads at aal1');
+  perform test.as_user(u, '{"aal":"aal2"}');
+  select object_path into p from public.authorize_upload('chat', 'image/jpeg', 500, repeat('a', 64));
+  perform test.as_user(u, '{"aal":"aal1"}');
+  perform test.throws(format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('media', %L, %L, '{"size": 500, "mimetype": "image/jpeg"}')$q$, p, u),
+                      'sqlstate:42501', 'no Storage writes at aal1');
   perform test.ok(not public.am_i_owner(), 'am_i_owner false at aal1');
 
   -- aal2 session: everything works again.
@@ -46,6 +50,8 @@ begin
   perform public.touch_presence();
   perform test.ok(public.send_message(c, 'text', 'hi', gen_random_uuid()) is not null, 'aal2 can send');
   perform test.ok(private.can_use_topic('conv:' || c), 'aal2 topic ok');
+  insert into storage.objects (bucket_id, name, owner, metadata)
+  values ('media', p, u, '{"size": 500, "mimetype": "image/jpeg"}');   -- the same upload works at aal2
 
   -- An owner with 2FA: every admin RPC needs aal2.
   perform test.as_superuser();

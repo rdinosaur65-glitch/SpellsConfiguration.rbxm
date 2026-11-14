@@ -188,3 +188,31 @@ begin
   perform test.ok(exists (select 1 from private.audit_log where action = 'account.mfa_reset' and target_user_id = u), 'audited');
   update private.platform_config set owner_user_id = null;
 end $$;
+
+-- Reports are de-duplicated and guarded; reads can name exact messages (0020).
+do $$
+declare a uuid; b uuid; conv uuid; m1 uuid; m2 uuid; r1 uuid; r2 uuid;
+begin
+  a := test.new_user('rep2_a_76'); b := test.new_user('rep2_b_76');
+  perform test.befriend(a, b);
+  perform test.as_user(a);
+  conv := public.create_direct_conversation(b);
+  perform public.set_chat_expiry(conv, 'never');
+  m1 := public.send_message(conv, 'text', 'one', gen_random_uuid());
+  m2 := public.send_message(conv, 'text', 'two', gen_random_uuid());
+  perform test.as_user(b);
+  r1 := public.report_message(m1, 'spam');
+  r2 := public.report_message(m1, 'harassment');
+  perform test.ok(r1 = r2, 'reporting the same message again returns the open report');
+  perform test.ok(public.report_user(a, 'spam') = public.report_user(a, 'spam'), 'same for accounts');
+  perform public.mark_conversation_read(conv, null, null, array[m1]);
+  perform test.ok(exists (select 1 from public.message_reads where message_id = m1 and user_id = b), 'named message read');
+  perform test.ok(not exists (select 1 from public.message_reads where message_id = m2 and user_id = b), 'others untouched');
+  perform test.as_superuser();
+  insert into private.platform_usage (id, db_bytes, measured_at) values (true, 499000000, now())
+  on conflict (id) do update set db_bytes = excluded.db_bytes, measured_at = excluded.measured_at;
+  perform test.as_user(b);
+  perform test.throws(format($q$select public.report_message(%L, 'spam')$q$, m2), 'storage_full', 'reports stop at the database guard');
+  perform test.as_superuser();
+  perform private.refresh_db_usage();
+end $$;

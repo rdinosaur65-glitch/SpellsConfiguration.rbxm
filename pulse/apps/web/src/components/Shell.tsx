@@ -23,7 +23,7 @@ function ShellInner() {
 
   return (
     <div className="app">
-      {!online && <div className="offline" role="status">You're offline. Messages you send now go out when you reconnect, as long as PULSE stays open.</div>}
+      {!online && <div className="offline" role="status">Offline · messages send when you reconnect</div>}
       <Suspense fallback={<div className="center" style={{ flex: 1 }}><Spinner /></div>}><Outlet /></Suspense>
       {needRefresh && (
         <div className="update-bar" role="status">

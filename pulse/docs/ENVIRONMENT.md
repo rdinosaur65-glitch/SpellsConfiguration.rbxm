@@ -67,6 +67,22 @@ itself needs no paid service.
   chat list and chat screen use Postgres-changes channels whose data is protected by RLS;
   only the typing channel (`conv:<id>`) is private.
 
+## Edge Functions (media) — free tier: 500,000 invocations a month
+```sh
+npx supabase functions deploy media-url storage-janitor
+npx supabase secrets set JANITOR_SECRET=<long random string>
+```
+Then, once, in the SQL editor (Vault keeps both encrypted; the janitor job is a no-op until
+they exist, and it only calls the function when something is waiting to be deleted):
+```sql
+select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/storage-janitor', 'pulse_janitor_url');
+select vault.create_secret('<the same long random string>', 'pulse_janitor_secret');
+```
+`media-url` needs nothing else: it uses the project's own URL and keys, which Supabase
+injects into every function. Locally, `npx supabase functions serve --env-file
+supabase/functions/.env` serves both (the `.env` holds a throwaway `JANITOR_SECRET` and is
+git-ignored).
+
 ## Local tests
 | Variable | Default | Purpose |
 |---|---|---|

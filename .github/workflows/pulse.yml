@@ -45,7 +45,16 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: pulse/package-lock.json }
       - run: npm ci
       - run: npm run sb:start
-      - name: SQL suites on the real local Supabase stack
+      - name: Serve the Edge Functions (throwaway local secret)
+        run: |
+          printf 'JANITOR_SECRET=%s\n' "$(openssl rand -hex 24)" > supabase/functions/.env
+          nohup npx supabase functions serve --env-file supabase/functions/.env > /tmp/functions.log 2>&1 &
+          for i in $(seq 1 60); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:54321/functions/v1/storage-janitor)" = 401 ] && exit 0
+            sleep 2
+          done
+          cat /tmp/functions.log; exit 1
+      - name: SQL suites + Edge Function tests on the real local Supabase stack
         run: scripts/test-supabase-local.sh
       - run: npx playwright install --with-deps chromium
         working-directory: pulse/apps/web

@@ -29,5 +29,18 @@ if PSQL_CMD="psql $DB_URL -v ON_ERROR_STOP=1 -q -X" PULSE_TEST_DB="" "$ROOT/supa
 else
   echo "FAIL concurrency.sh"; FAIL=$((FAIL+1))
 fi
+# Edge Functions (media-url, storage-janitor), when they are being served:
+#   npx supabase functions serve --env-file supabase/functions/.env
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:54321/functions/v1/storage-janitor || true)
+if [ "$code" = "401" ]; then
+  if (set -a; eval "$(npx supabase status -o env 2>/dev/null)"; set +a; SUPABASE_URL="$API_URL" DB_URL="$DB_URL" \
+      node --test "$ROOT/supabase/tests/functions.test.mjs") > /tmp/pulse-functions-test.log 2>&1; then
+    echo "PASS functions.test.mjs"; PASS=$((PASS+1))
+  else
+    echo "FAIL functions.test.mjs"; sed 's/^/     /' /tmp/pulse-functions-test.log | tail -40; FAIL=$((FAIL+1))
+  fi
+else
+  echo "SKIP functions.test.mjs (functions not served: npx supabase functions serve --env-file supabase/functions/.env)"
+fi
 echo "== $PASS passed, $FAIL failed (real Supabase local stack)"
 [ "$FAIL" = "0" ]

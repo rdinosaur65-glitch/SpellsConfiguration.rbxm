@@ -45,4 +45,5 @@ cd apps/web && npx playwright test    # end-to-end (builds the app, needs the lo
    (required: the built-in mailer only reaches the project's own team).
 3. Cloudflare Pages → build `npm run build -w @pulse/web`, output `apps/web/dist`,
    with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` set.
-4. Sign up, then record your UUID as owner (`docs/ENVIRONMENT.md`).
+4. Deploy the two Edge Functions and set the janitor secret (`docs/ENVIRONMENT.md`).
+5. Sign up, then record your UUID as owner (`docs/ENVIRONMENT.md`).

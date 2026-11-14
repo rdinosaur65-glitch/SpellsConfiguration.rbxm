@@ -263,3 +263,13 @@ a.sheet-item { display: flex; align-items: center; justify-content: center; text
 .gallery-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .gallery-cell { aspect-ratio: 1; border: 0; padding: 0; border-radius: 10px; overflow: hidden; background: var(--surface-2); cursor: pointer; }
 .gallery-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---------- voice messages ---------- */
+.composer.recording { align-items: center; }
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); animation: rec 1s ease-in-out infinite; flex: none; }
+@keyframes rec { 50% { opacity: .3; } }
+.bubble-voice { padding: 6px 8px; }
+.voice-audio { width: min(260px, 60vw); height: 40px; display: block; }
+.voice-load { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 22px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }

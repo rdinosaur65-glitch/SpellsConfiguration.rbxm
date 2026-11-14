@@ -177,3 +177,24 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     document.body,
   );
 }
+
+/** A voice note. Loads only when tapped (every play is a download that counts against the
+ *  daily budget); plays from memory afterwards. */
+export function VoiceNote({ assetId, preview, label }: { assetId: string | null; preview?: string; label: string }) {
+  const [src, setSrc] = useState<string | null>(preview ?? null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function load() {
+    if (!assetId || busy) return;
+    setBusy(true); setError(null);
+    try { setSrc(await chatMediaObjectUrl(assetId)); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(false); }
+  }
+  if (src) return <audio className="voice-audio" controls autoPlay={!preview} src={src} aria-label={label} data-testid="voice-audio" />;
+  return (
+    <button className="voice-load" onClick={() => void load()} disabled={busy || !assetId} aria-label={`Play ${label.toLowerCase()}`}>
+      {busy ? <Spinner small /> : '▶'} <span>{error ?? 'Voice note'}</span>
+    </button>
+  );
+}

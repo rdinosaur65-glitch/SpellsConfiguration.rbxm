@@ -108,7 +108,7 @@ export function SearchSheet({ convId, title, nameOf, onPick, onClose }: {
               <button key={h.message_id} className="list-item" style={{ border: 0, background: 'none', textAlign: 'left', width: '100%' }}
                       onClick={() => onPick(h)}>
                 <span className="grow">
-                  <span className="list-title truncate" style={{ display: 'block' }}>{h.kind === 'photo' ? '📷 Photo' : h.body}</span>
+                  <span className="list-title truncate" style={{ display: 'block' }}>{h.kind === 'photo' ? '📷 Photo' : h.kind === 'voice' ? '🎤 Voice note' : h.body}</span>
                   <span className="list-sub">{nameOf(h.sender_id, h.conversation_id)} · {relativeTime(h.created_at)}{h.saved ? ' · saved' : ''}</span>
                 </span>
               </button>

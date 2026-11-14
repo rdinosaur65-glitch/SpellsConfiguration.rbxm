@@ -39,14 +39,15 @@ interface Reservation { asset_id: string; bucket: string; object_path: string; d
  * Reserve → upload → confirm. Idempotent: the same bytes map to the same asset (the
  * server deduplicates by SHA-256), so a retry after a failure resumes where it stopped.
  */
-export async function uploadMedia(blob: Blob, purpose: MediaPurpose): Promise<string> {
+export async function uploadMedia(blob: Blob, purpose: MediaPurpose, opts: { durationSeconds?: number } = {}): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  const mime = blob.type || 'image/jpeg';
-  const check = validateMedia({ purpose, mime, bytes: bytes.byteLength });
+  const mime = (blob.type || 'image/jpeg').split(';')[0]!.trim();      // 'audio/webm;codecs=opus' → 'audio/webm'
+  const check = validateMedia({ purpose, mime, bytes: bytes.byteLength, durationSeconds: opts.durationSeconds });
   if (!check.ok) throw new Error(check.error);
   const sha = await sha256Hex(bytes);
   const [r] = await rpc<Reservation[]>('authorize_upload', {
     p_purpose: purpose, p_mime: mime, p_bytes: bytes.byteLength, p_sha256: sha,
+    p_duration: opts.durationSeconds ?? null,
   });
   if (!r) throw new Error('upload_failed');
   if (r.deduplicated) {
@@ -54,7 +55,7 @@ export async function uploadMedia(blob: Blob, purpose: MediaPurpose): Promise<st
     try { if (await rpc<boolean>('confirm_upload', { p_asset: r.asset_id })) return r.asset_id; }
     catch (e) { if ((e as { message?: string }).message !== 'upload_missing') throw e; }
   }
-  const { error } = await supabase.storage.from(r.bucket).upload(r.object_path, blob, { contentType: mime, upsert: false });
+  const { error } = await supabase.storage.from(r.bucket).upload(r.object_path, new Blob([bytes], { type: mime }), { contentType: mime, upsert: false });
   if (error && !/exists/i.test(error.message)) throw error;
   if (!(await rpc<boolean>('confirm_upload', { p_asset: r.asset_id }))) throw new Error('upload_rejected');
   return r.asset_id;

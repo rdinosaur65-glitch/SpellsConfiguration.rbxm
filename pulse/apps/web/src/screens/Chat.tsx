@@ -7,7 +7,8 @@ import { errorMessage } from '../lib/errors';
 import { clockTime } from '../lib/time';
 import type { Message, Participant } from '../lib/types';
 import { Banner, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
-import { ChatImage, SnapViewer } from '../components/Media';
+import { ChatImage, SnapViewer, VoiceNote } from '../components/Media';
+import { MAX_VOICE_SECONDS, VoiceRecorder, voiceSupported } from '../lib/recorder';
 import { compressImage } from '../lib/media';
 import { deliver as deliverQueued, enqueue, onOutbox, pendingFor, retry as retryQueued } from '../lib/outbox';
 import { useAuth } from '../lib/auth';
@@ -22,7 +23,7 @@ const EXPIRY_TEXT: Record<Expiry, string> = {
 };
 
 /** A message in the UI: server rows plus local optimistic sends. */
-interface UiMessage extends Message { local?: 'sending' | 'failed'; preview?: string }
+interface UiMessage extends Message { local?: 'sending' | 'failed'; preview?: string; duration?: number }
 interface SnapState { snap_id: string; recipient_id: string; status: 'delivered' | 'opened' | 'replayed' | 'expired'; views_used: number }
 
 const COLS = 'id,conversation_id,sender_id,kind,body,media_asset_id,snap_id,reply_to_id,client_msg_id,created_at,edited_at,deleted_at,expires_at';
@@ -48,6 +49,9 @@ export function Chat() {
   const [snapStates, setSnapStates] = useState<SnapState[]>([]);
   const [viewing, setViewing] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const recorder = useRef<VoiceRecorder | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
@@ -408,6 +412,40 @@ export function Chat() {
     await deliver(m, blob);
   }
 
+  // Voice messages: tap the mic, talk, then Send (or Cancel). Nothing leaves the phone before Send.
+  useEffect(() => {
+    if (!recording) return;
+    const t = setInterval(() => setRecSeconds(Math.floor(recorder.current?.elapsed() ?? 0)), 250);
+    return () => clearInterval(t);
+  }, [recording]);
+  useEffect(() => () => recorder.current?.cancel(), []);
+  async function startVoice() {
+    if (recording || !conv) return;
+    const r = new VoiceRecorder();
+    try {
+      await r.start(() => { void finishVoice(true); });
+      recorder.current = r; setRecSeconds(0); setRecording(true);
+    } catch { showToast('Allow microphone access to record a voice note.'); }
+  }
+  async function finishVoice(send: boolean) {
+    const r = recorder.current;
+    recorder.current = null; setRecording(false);
+    if (!r) return;
+    if (!send) { r.cancel(); return; }
+    const rec = await r.stop();
+    if (!rec || rec.seconds < 0.5) { showToast('Too short — hold on a little longer.'); return; }
+    const clientId = crypto.randomUUID();
+    const m: UiMessage = {
+      id: `local-${clientId}`, conversation_id: convId, sender_id: me, kind: 'voice', body: null, media_asset_id: null,
+      reply_to_id: replyTo?.id ?? null, client_msg_id: clientId, created_at: new Date().toISOString(),
+      edited_at: null, deleted_at: null, expires_at: null, local: 'sending', preview: URL.createObjectURL(rec.blob), duration: rec.seconds,
+    };
+    stick.current = true;
+    setMessages((prev) => [...(prev ?? []), m]);
+    setReplyTo(null);
+    await deliver(m, rec.blob);
+  }
+
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
     if (e.key === 'Escape') { setEditing(null); setReplyTo(null); }
@@ -477,7 +515,12 @@ export function Chat() {
                 {showAuthor && <span className="msg-author">{nameOf(m.sender_id)}{handleOf(m.sender_id) ? <span className="muted"> @{handleOf(m.sender_id)}</span> : null}</span>}
                 {quoted && <span className="msg-meta">↪ {quoted.deleted_at ? 'deleted message' : (quoted.body ?? '').slice(0, 60)}</span>}
                 {m.kind === 'snap' && !m.deleted_at ? snapBubble(m)
-                  : m.kind === 'photo' && !m.deleted_at ? (
+                  : m.kind === 'voice' && !m.deleted_at ? (
+                  <div className="bubble bubble-media bubble-voice">
+                    <VoiceNote assetId={m.media_asset_id ?? null} preview={m.preview}
+                      label={mine ? 'Your voice note' : `Voice note from ${nameOf(m.sender_id)}`} />
+                  </div>
+                ) : m.kind === 'photo' && !m.deleted_at ? (
                   // A photo may contain its own "Tap to load" button, so the bubble itself is not one.
                   <div className="bubble bubble-media">
                     {m.preview ? <img className="chat-photo" src={m.preview} alt="Photo you sent" />
@@ -494,7 +537,7 @@ export function Chat() {
                   <ReactionChips list={reactions.byMessage.get(m.id)!} me={me} nameOf={nameOf} onToggle={(e) => react(m.id, e)} />)}
                 <span className="msg-meta">
                   {clockTime(m.created_at)}{m.edited_at && !m.deleted_at ? ' · edited' : ''}
-                  {m.kind === 'photo' && !m.deleted_at && !m.local && <> · <button className="link-btn small" aria-label="Photo options"
+                  {(m.kind === 'photo' || m.kind === 'voice') && !m.deleted_at && !m.local && <> · <button className="link-btn small" aria-label={m.kind === 'voice' ? 'Voice note options' : 'Photo options'}
                     onClick={() => setMenuFor(m)}>Options</button></>}
                   {m.local === 'sending' && ' · sending…'}
                   {m.local === 'failed' && <> · not sent <button className="link-btn small" onClick={() => {
@@ -514,6 +557,15 @@ export function Chat() {
           <button className="link-btn" onClick={() => { setReplyTo(null); if (editing) { setEditing(null); setText(''); } }}>Cancel</button>
         </div>
       )}
+      {recording ? (
+        <div className="composer recording" data-testid="voice-recording">
+          <span className="rec-dot" aria-hidden />
+          <span className="grow" aria-live="polite">Recording {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
+            <span className="muted small"> / {MAX_VOICE_SECONDS / 60}:00</span></span>
+          <button className="btn btn-ghost btn-sm" onClick={() => void finishVoice(false)}>Cancel</button>
+          <button className="send-btn" aria-label="Send voice note" onClick={() => void finishVoice(true)}><Icon name="send" size={20} /></button>
+        </div>
+      ) : (
       <div className="composer">
         <button className="attach-btn" aria-label="Send a photo" disabled={!conv || Boolean(editing)} onClick={() => fileRef.current?.click()}>
           <Icon name="image" size={20} />
@@ -523,10 +575,17 @@ export function Chat() {
         <textarea ref={composerRef} rows={1} aria-label="Message" placeholder="Message" value={text} maxLength={LIMITS.messageMaxChars}
                   enterKeyHint="send" autoComplete="off"
                   onChange={(e) => onType(e.target.value)} onKeyDown={onKey} />
-        <button className="send-btn" aria-label={editing ? 'Save edit' : 'Send'} disabled={!text.trim() || !conv} onClick={() => void submit()}>
-          <Icon name={editing ? 'check' : 'send'} size={20} />
-        </button>
+        {!text.trim() && !editing && voiceSupported() ? (
+          <button className="send-btn" aria-label="Record a voice note" disabled={!conv} onClick={() => void startVoice()}>
+            <Icon name="mic" size={20} />
+          </button>
+        ) : (
+          <button className="send-btn" aria-label={editing ? 'Save edit' : 'Send'} disabled={!text.trim() || !conv} onClick={() => void submit()}>
+            <Icon name={editing ? 'check' : 'send'} size={20} />
+          </button>
+        )}
       </div>
+      )}
 
       {menuFor && (
         <Sheet label="Message options" onClose={() => setMenuFor(null)}>

@@ -87,7 +87,7 @@ export function useToast(): [ReactNode, (msg: string) => void] {
 }
 
 type IconName = 'camera' | 'chat' | 'friends' | 'settings' | 'back' | 'send' | 'search' | 'plus' | 'image' |
-  'check' | 'close' | 'flip' | 'more' | 'lock';
+  'check' | 'close' | 'flip' | 'more' | 'lock' | 'mic';
 const PATHS: Record<IconName, string> = {
   camera: 'M4 8h3l2-3h6l2 3h3v11H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   chat: 'M4 5h16v11H9l-5 4z',
@@ -99,6 +99,7 @@ const PATHS: Record<IconName, string> = {
   plus: 'M12 5v14 M5 12h14',
   check: 'M5 12l5 5 9-10',
   close: 'M6 6l12 12 M18 6L6 18',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z M5 11a7 7 0 0 0 14 0 M12 18v3',
   flip: 'M4 9a8 8 0 0 1 14-3l2 2 M20 4v4h-4 M20 15a8 8 0 0 1-14 3l-2-2 M4 20v-4h4',
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
   lock: 'M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3',

@@ -138,6 +138,14 @@ the service worker shows it → "New chats" off stops pushes → turning off rem
   closing a short window in which a new message or reaction could be missed after opening a
   chat. Tests: e2e `extras.spec.ts`.
 
+## 4b2b. Voice notes
+Tap the mic in a chat (when the message box is empty), talk, then send or cancel; nothing
+leaves the phone before Send. Up to 2 minutes, recorded with the browser's own MediaRecorder
+(Opus/WebM on Android and desktop, AAC/MP4 on iPhone), sent through the same outbox as photos
+(queued offline, in order). The other person taps to play: each play is one download through
+media-url, so nothing loads by itself. Tests: e2e `voice.spec.ts` (cancel sends nothing; a
+recorded note is stored as audio with its duration; the other phone downloads and plays it).
+
 ## 4b3. Push review fixes, app error reports
 An independent review of push notifications confirmed 5 problems (2 high), all fixed in 0030
 with regression tests that failed before the fix: a malformed notification setting could jam
@@ -175,7 +183,7 @@ otherwise be missed until the next reload); Friends re-reads requests on every v
 | Domain unit tests | 11/11 |
 | SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 14/14 files (incl. push test 78 and concurrency races 1–8) |
 | SQL + Edge Functions on the real local Supabase stack | 15/15 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email, push-send against a mock push service) |
-| Playwright end-to-end (built PWA + local stack) | 22 passed, 1 skipped (the screenshot capture, by design); flaky-prone specs repeated 5–10× |
+| Playwright end-to-end (built PWA + local stack) | 23 passed, 1 skipped (the screenshot capture, by design); flaky-prone specs repeated 5–10× |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |
 
 ## 6. Remaining limitations and risks (honest list)
@@ -196,7 +204,7 @@ otherwise be missed until the next reload); Friends re-reads requests on every v
 - A human security review is still recommended before inviting people.
 
 ## 7. Not in this beta (planned)
-Video Snaps, voice notes, Stories, streaks, Memories backup and Vault, calls,
+Video Snaps, Stories, streaks, Memories backup and Vault, calls,
 map/location,
 Google sign-in (needs the owner's free OAuth credentials); Apple sign-in is not possible at €0.
 

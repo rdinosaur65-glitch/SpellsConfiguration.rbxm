@@ -172,6 +172,6 @@ installs it like an app.
   (refuse new writes or uploads) before it would need a paid tier.
 
 ## What is not in this beta
-Video Snaps, voice notes, Stories, streaks, Memories backup, calls,
+Video Snaps, Stories, streaks, Memories backup, calls,
 the map, and Google/Apple sign-in (see `docs/CHECKLIST.md`). Push notifications in
 particular: friends only see new messages when they open the app.

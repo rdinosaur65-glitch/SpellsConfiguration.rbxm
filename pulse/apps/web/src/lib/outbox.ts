@@ -12,7 +12,7 @@ import type { Message } from './types';
  * the results. Each chat's messages are sent one at a time, in the order they were
  * written, and never overtake an earlier message that is still waiting.
  */
-export interface Pending extends Message { local?: 'sending' | 'failed'; preview?: string }
+export interface Pending extends Message { local?: 'sending' | 'failed'; preview?: string; duration?: number }
 export type OutboxEvent =
   | { type: 'sent'; clientId: string; id: string }
   | { type: 'failed'; clientId: string; offline: boolean; error: unknown };
@@ -96,9 +96,10 @@ async function send(clientId: string): Promise<void> {
   queue.set(clientId, { ...m, local: 'sending' });
   const gen = generation;
   try {
-    const blob = m.kind === 'photo' ? blobs.get(clientId) : undefined;
-    if (m.kind === 'photo' && !blob) throw new Error('invalid_media');
-    const asset = blob ? await uploadMedia(blob, 'chat') : null;
+    const withMedia = m.kind === 'photo' || m.kind === 'voice';
+    const blob = withMedia ? blobs.get(clientId) : undefined;
+    if (withMedia && !blob) throw new Error('invalid_media');
+    const asset = blob ? await uploadMedia(blob, 'chat', { durationSeconds: m.duration }) : null;
     const id = await rpc<string>('send_message', {
       p_conv: m.conversation_id, p_kind: m.kind, p_body: m.body, p_client_msg_id: m.client_msg_id,
       p_media_asset: asset, p_reply_to: m.reply_to_id,

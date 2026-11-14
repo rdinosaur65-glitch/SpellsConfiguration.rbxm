@@ -77,7 +77,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Read status & disappearing modes (after view / 24 h / 7 d / never) | ✅ | e2e: mode switch announced in chat, Delivered → Opened live; mode fixed per message (75) |
 | Edit (15 min), delete tombstones, reply, save | ✅ | edit in e2e |
 | Typing indicators (respect privacy setting) | ✅ | e2e, including the privacy toggle off |
-| Photo messages (compressed, EXIF stripped, Data saver aware) | ✅ | e2e. Video/voice: DB ready, UI ⬜ |
+| Photo messages (compressed, EXIF stripped, Data saver aware) | ✅ | e2e. Voice notes ✅ (record/cancel/send, tap to play; e2e voice.spec.ts). Chat video: DB ready, UI ⬜ |
 | Reactions (one per person, live), message search (this chat with jump-to-message, all chats, saved only), photos/links/saved view | ✅ | e2e extras.spec.ts; RPCs tested in SQL |
 | Transcription | ⬜ | On-device only; deferred |
 

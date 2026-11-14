@@ -168,8 +168,10 @@ begin
   update private.streaks set warned_on = null where user_a = least(a, b) and user_b = greatest(a, b);
   update public.user_settings set notifications = notifications || '{"streaks": false}' where user_id = b;
   perform private.streak_record_snap(a, b, test.day_at(1)); -- (no change; keeps the scenario)
-  update private.streaks set last_completed_on = private.streak_day(test.day_at(2)) - 1, a_sent_on = private.streak_day(test.day_at(2)),
-         b_sent_on = private.streak_day(test.day_at(1)), count = 2
+  -- Wanda (a) has sent today, Walt (b) has not — whichever of them is stored as user_a.
+  update private.streaks set last_completed_on = private.streak_day(test.day_at(2)) - 1, count = 2,
+         a_sent_on = case when user_a = a then private.streak_day(test.day_at(2)) else private.streak_day(test.day_at(1)) end,
+         b_sent_on = case when user_b = a then private.streak_day(test.day_at(2)) else private.streak_day(test.day_at(1)) end
    where user_a = least(a, b) and user_b = greatest(a, b);
   delete from private.push_queue;
   r := private.streak_maintenance(test.day_at(2, interval '21 hours'));

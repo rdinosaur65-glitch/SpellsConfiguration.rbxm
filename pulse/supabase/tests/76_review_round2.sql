@@ -143,3 +143,27 @@ begin
   perform test.ok((select role from public.conversation_members where conversation_id = g and user_id = s) = 'owner',
                   'suspended member inherits rather than leaving the group ownerless');
 end $$;
+
+-- A Snap view counts only once its bytes were served (0018).
+do $$
+declare a uuid; b uuid; img uuid; snap uuid; s uuid; st public.snap_status;
+begin
+  a := test.new_user('refund_a_76'); b := test.new_user('refund_b_76');
+  perform test.befriend(a, b);
+  img := test.upload(a, 'snap', 'image/jpeg', 1300);
+  perform test.as_user(a);
+  snap := public.send_snap(img, array[b], null, 3::smallint, false, gen_random_uuid());
+  perform test.as_user(b);
+  select session_id into s from public.open_snap(snap);
+  st := public.close_snap_view(snap, s);              -- nothing fetched
+  perform test.ok(st = 'delivered', 'unserved view given back');
+  perform test.ok((select views_used from public.snap_recipients where snap_id = snap and recipient_id = b) = 0, 'views_used restored');
+  perform test.as_superuser();
+  perform test.as_user(b);
+  select session_id into s from public.open_snap(snap);
+  perform public.authorize_snap_media(snap, s);         -- bytes released
+  st := public.close_snap_view(snap, s);
+  perform test.ok(st = 'opened' and (select views_used from public.snap_recipients where snap_id = snap and recipient_id = b) = 1,
+                  'served view counts');
+  perform test.as_superuser();
+end $$;

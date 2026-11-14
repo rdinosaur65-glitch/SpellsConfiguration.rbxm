@@ -45,6 +45,7 @@ begin
   -- Replay (same timer), then expiry.
   select * into o from public.open_snap(snap);
   perform test.ok(o.view_number = 2 and o.view_seconds = 5, 'replay uses same timer');
+  perform public.authorize_snap_media(snap, o.session_id);   -- the replay is actually shown
   -- Timer elapses on the server even if the client never closes.
   perform test.as_superuser();
   update public.snap_recipients set session_deadline = now() - interval '1 second' where snap_id = snap;

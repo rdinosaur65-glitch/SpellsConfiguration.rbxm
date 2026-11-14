@@ -4,11 +4,29 @@ import { errorMessage } from '../lib/errors';
 import { chatMediaObjectUrl, snapObjectUrl } from '../lib/media';
 import { Spinner } from './ui';
 
-/** A photo in a chat. With Data saver on, it loads only when tapped. */
+/**
+ * A photo in a chat. It is downloaded only when it scrolls near the screen (each download
+ * is one Edge Function call and counts against the daily media allowance), and with
+ * Data saver on only when tapped.
+ */
 export function ChatImage({ assetId, dataSaver, alt }: { assetId: string; dataSaver: boolean; alt: string }) {
-  const [want, setWant] = useState(!dataSaver);
+  const [want, setWant] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const holder = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (dataSaver || want) return;
+    const el = holder.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setWant(true); return; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { setWant(true); io.disconnect(); }
+    }, { rootMargin: '300px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [dataSaver, want]);
+
   useEffect(() => {
     if (!want) return;
     let alive = true;
@@ -16,11 +34,12 @@ export function ChatImage({ assetId, dataSaver, alt }: { assetId: string; dataSa
     chatMediaObjectUrl(assetId).then((u) => { if (alive) setSrc(u); })
       .catch((e) => { if (alive) setError(errorMessage(e)); });
     return () => { alive = false; };
-  }, [assetId, want]);
-  if (!want) return <button className="media-placeholder" onClick={() => setWant(true)}>📷 Tap to load photo</button>;
-  if (error) return <button className="media-placeholder" onClick={() => { setWant(false); setTimeout(() => setWant(true)); }}>{error} · Retry</button>;
-  if (!src) return <span className="media-placeholder"><Spinner small /></span>;
-  return <img className="chat-photo" src={src} alt={alt} data-testid="chat-photo" />;
+  }, [assetId, want, attempt]);
+
+  if (src) return <img className="chat-photo" src={src} alt={alt} data-testid="chat-photo" />;
+  if (error) return <button className="media-placeholder" onClick={() => setAttempt((n) => n + 1)}>{error} · Retry</button>;
+  if (!want && dataSaver) return <button className="media-placeholder" onClick={() => setWant(true)}>📷 Tap to load photo</button>;
+  return <span ref={holder} className="media-placeholder" aria-label="Loading photo">{want ? <Spinner small /> : '📷'}</span>;
 }
 
 interface OpenedSnap { session_id: string; view_number: number; deadline: string; view_seconds: number | null; unlimited: boolean; allow_saving: boolean }

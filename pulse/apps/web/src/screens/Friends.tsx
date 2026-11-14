@@ -18,6 +18,8 @@ const normalizeQuery = (q: string) => q.trim().toLowerCase().replace(/^@+/, '');
 export function Friends() {
   const nav = useNavigate();
   const { requests, reload: reloadRequests } = useFriendRequests();
+  // Re-read on every visit, like the chat list (a live event can be missed while reconnecting).
+  useEffect(() => { void reloadRequests(); }, [reloadRequests]);
   const { reload: reloadChats } = useChatList();
   const [friends, setFriends] = useState<FriendRow[] | null>(null);
   const [query, setQuery] = useState('');

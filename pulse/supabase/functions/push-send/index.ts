@@ -19,6 +19,19 @@ const PARALLEL = 20;
 
 interface Claim { subscription_id: string; endpoint: string; p256dh: string; auth: string; title: string; body: string; url: string; tag: string }
 
+/** Send with up to two retries (after 1 s and 3 s) on a temporary failure: network error,
+ *  429 or 5xx. Queue entries are claimed before sending, so retrying here is what keeps a
+ *  brief push-service hiccup from losing the notification. */
+async function deliver(c: Claim): Promise<number> {
+  let status = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    status = await sendWebPush(c, { title: c.title, body: c.body, url: c.url, tag: c.tag }, VAPID).catch(() => 0);
+    if (status !== 0 && status !== 429 && status < 500) return status;
+    await new Promise((r) => setTimeout(r, attempt === 0 ? 1000 : 3000));
+  }
+  return status;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
   if (!SECRET || !safeEqual(req.headers.get('x-janitor-secret') ?? '', SECRET)) return json(401, { error: 'unauthorized' });
@@ -30,12 +43,16 @@ Deno.serve(async (req) => {
   while (Date.now() - started < TIME_BUDGET_MS) {
     const claim = await rpc<Claim[]>('push_claim', { p_limit: 100 }, SERVICE_KEY);
     if (!claim.ok) return json(500, { error: claim.code, sent });
-    if (claim.data.length === 0) break;
+    if (claim.data.length === 0) {
+      // A batch can claim events that no device should get; stop only when nothing is left.
+      const pending = await rpc<boolean>('push_pending', {}, SERVICE_KEY);
+      if (!pending.ok || !pending.data) break;
+      continue;
+    }
     const goneIds: string[] = [], sentIds: string[] = [];
     for (let i = 0; i < claim.data.length; i += PARALLEL) {
       const batch = claim.data.slice(i, i + PARALLEL);
-      const statuses = await Promise.all(batch.map((c) => sendWebPush(c,
-        { title: c.title, body: c.body, url: c.url, tag: c.tag }, VAPID).catch(() => 0)));
+      const statuses = await Promise.all(batch.map((c) => deliver(c)));
       statuses.forEach((s, j) => {
         const id = batch[j]!.subscription_id;
         if (s >= 200 && s < 300) { sent++; sentIds.push(id); }

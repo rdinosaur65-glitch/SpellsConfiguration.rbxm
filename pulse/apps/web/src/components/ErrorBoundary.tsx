@@ -1,10 +1,14 @@
+import { reportError } from '../lib/errorReport';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 /** Last-resort screen so a rendering bug never leaves a blank app. */
 export class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error('PULSE crashed', error, info.componentStack); }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('PULSE crashed', error, info.componentStack);
+    reportError(error, 'render');
+  }
   render() {
     if (!this.state.error) return this.props.children;
     return (

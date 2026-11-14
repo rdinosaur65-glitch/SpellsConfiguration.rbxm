@@ -138,6 +138,22 @@ the service worker shows it → "New chats" off stops pushes → turning off rem
   closing a short window in which a new message or reaction could be missed after opening a
   chat. Tests: e2e `extras.spec.ts`.
 
+## 4b3. Push review fixes, app error reports
+An independent review of push notifications confirmed 5 problems (2 high), all fixed in 0030
+with regression tests that failed before the fix: a malformed notification setting could jam
+delivery for everyone; the function was called even when nobody would be notified (now only
+when someone will be, at most once per transaction); a temporary push-service error lost the
+notification (now retried); stale events were sent late (now dropped after an hour, with a
+one-minute sweep for a stuck queue); repeated friend requests could buzz a stranger (now once
+a day); a re-signed-in device stayed on the old session (now re-bound).
+
+App errors on testers' phones now reach the Owner panel (0029): error text, page, browser and
+app version only — no messages — rate-limited and kept 14 days.
+
+Live updates: a chat, the chat list and friend requests now catch up again when Realtime
+confirms that database changes are flowing (a change in the moment after "subscribed" could
+otherwise be missed until the next reload); Friends re-reads requests on every visit.
+
 ## 4c. Last review of today's web changes (all verified, all fixed)
 - On iPhone a dropped connection ("Load failed") was treated as a refusal, so the outbox
   discarded the message and let later ones overtake it → network failures are recognised in
@@ -159,7 +175,7 @@ the service worker shows it → "New chats" off stops pushes → turning off rem
 | Domain unit tests | 11/11 |
 | SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 14/14 files (incl. push test 78 and concurrency races 1–8) |
 | SQL + Edge Functions on the real local Supabase stack | 15/15 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email, push-send against a mock push service) |
-| Playwright end-to-end (built PWA + local stack) | 22 passed, 1 skipped (the screenshot capture, by design) |
+| Playwright end-to-end (built PWA + local stack) | 22 passed, 1 skipped (the screenshot capture, by design); flaky-prone specs repeated 5–10× |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |
 
 ## 6. Remaining limitations and risks (honest list)

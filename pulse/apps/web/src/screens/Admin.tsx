@@ -25,6 +25,7 @@ interface Report {
 }
 interface UserRow { id: string; username: string; display_name: string; account_state: AccountState; created_at: string; open_reports: number }
 interface AuditRow { id: number; action: string; target_user_id: string | null; details: Record<string, unknown>; created_at: string }
+interface ErrorRow { id: number; created_at: string; username: string | null; message: string; stack: string | null; path: string | null; user_agent: string | null; app_version: string | null }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (<><h2 className="section-title">{title}</h2><div className="card card-pad">{children}</div></>);
@@ -52,18 +53,20 @@ export function Admin() {
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
+  const [errors, setErrors] = useState<ErrorRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, showToast] = useToast();
 
   const load = useCallback(async () => {
     try {
-      const [u, r, a] = await Promise.all([
+      const [u, r, a, er] = await Promise.all([
         rpc<Usage>('admin_usage_summary'),
         rpc<Report[]>('admin_list_reports', { p_status: status }),
         rpc<AuditRow[]>('admin_audit_log', { p_limit: 30 }),
+        rpc<ErrorRow[]>('admin_client_errors', { p_limit: 30 }),
       ]);
-      setUsage(u); setReports(r); setAudit(a); setError(null);
+      setUsage(u); setReports(r); setAudit(a); setErrors(er); setError(null);
     } catch (e) { setError(errorMessage(e)); setReports((x) => x ?? []); }
   }, [status]);
   useEffect(() => { if (isOwner) void load(); }, [isOwner, load]);
@@ -184,6 +187,16 @@ export function Admin() {
           ))}
         </div>
       )}
+
+      <Card title="App errors (last 14 days)">
+        {errors.length === 0 ? <span className="muted small">No errors reported.</span> : errors.map((e) => (
+          <details key={e.id} className="small" data-testid="error-row" style={{ marginBottom: 6 }}>
+            <summary><strong>{e.message}</strong> · {relativeTime(e.created_at)}{e.username ? ` · @${e.username}` : ''}</summary>
+            <div className="muted" style={{ overflowWrap: 'anywhere' }}>{e.path} · {e.app_version} · {e.user_agent}</div>
+            {e.stack && <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, margin: '4px 0 0' }}>{e.stack}</pre>}
+          </details>
+        ))}
+      </Card>
 
       <Card title="Audit log (latest 30)">
         {audit.length === 0 ? <span className="muted small">No actions yet.</span> : audit.map((a) => (

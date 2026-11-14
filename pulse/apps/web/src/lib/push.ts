@@ -78,6 +78,5 @@ export async function resyncPush(): Promise<void> {
   if (!pushSupported() || Notification.permission !== 'granted') return;
   const sub = await current().catch(() => null);
   if (!sub) return;
-  const mine = await rpc<boolean>('has_push_subscription', { p_endpoint: sub.endpoint }).catch(() => false);
-  if (mine) await save(sub).catch(() => {});
+  await rpc<boolean>('rebind_push_subscription', { p_endpoint: sub.endpoint }).catch(() => false);
 }

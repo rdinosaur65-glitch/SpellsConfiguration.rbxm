@@ -35,6 +35,8 @@ function pinSupabaseOrigin(mode: string): Plugin {
 
 // Static SPA for Cloudflare Pages (free, no per-request cost). See docs/ARCHITECTURE.md §2.
 export default defineConfig(({ mode }) => ({
+  // Shown next to error reports in the Owner panel (Cloudflare Pages and CI set these).
+  define: { __APP_VERSION__: JSON.stringify((process.env.CF_PAGES_COMMIT_SHA ?? process.env.GITHUB_SHA ?? 'dev').slice(0, 12)) },
   plugins: [
     react(),
     pinSupabaseOrigin(mode),

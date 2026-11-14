@@ -93,6 +93,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations',
         filter: `id=in.(${ids.slice(i, i + 100).join(',')})` }, soon);
     }
+    // SUBSCRIBED comes a moment before database changes start to flow; catch up again
+    // when Realtime confirms, so a change in that window is not missed.
+    ch.on('system', {}, (p: { extension?: string; status?: string }) => {
+      if (p?.extension === 'postgres_changes' && p?.status === 'ok') { soon(); void reloadRequests(); }
+    });
     (ch as RealtimeChannel).subscribe((status) => {
       if (status !== 'SUBSCRIBED') return;
       // Catch up on anything missed while (re)connecting — also on the first join, since a

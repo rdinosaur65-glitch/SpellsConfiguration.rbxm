@@ -56,6 +56,13 @@ test('owner panel: a report leads to a suspension, which takes effect at once an
   await expect(row).toContainText('active');
   await expect(o.getByTestId('audit-row').first()).toContainText('account.set_state');
 
+  // An app error on someone's phone shows up in the owner's error list.
+  await u.evaluate(() => { setTimeout(() => { throw new Error('boom from a test phone'); }, 0); });
+  await expect.poll(() => sql(`select count(*) from private.client_errors e join public.profiles p on p.id = e.user_id
+                                 where p.username = '${uu}' and e.message like '%boom from a test phone%'`)).toBe('1');
+  await o.reload();
+  await expect(o.getByTestId('error-row').filter({ hasText: 'boom from a test phone' }).filter({ hasText: `@${uu}` })).toHaveCount(1);
+
   // Non-owners cannot open the panel.
   await r.goto('/admin');
   await expect(r.getByText('Only the owner can open this page.')).toBeVisible();

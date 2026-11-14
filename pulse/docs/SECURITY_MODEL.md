@@ -114,6 +114,19 @@ immediately, not when its JWT expires. Its own state is readable only through
 - Endpoints must be on a known push service (`push_endpoint_allowed`, checked again in the
   function): a user cannot make the server send requests to arbitrary or internal URLs.
 - Push services that answer 404/410 have their subscription removed.
+- Robust against bad input and waste (0030): notification settings are read without casts
+  (a malformed value cannot jam delivery for everyone); events are queued — and the function
+  called, at most once per transaction — only when someone will really be notified; at most
+  one friend-request notification per sender and recipient a day; temporary push-service
+  failures are retried twice; events older than an hour are dropped rather than sent late; a
+  one-minute sweep retries a stuck queue. Signing in again re-binds the device to the new
+  session; Settings shows notifications as on only while that session is live.
+
+## App error reports (migration 0029)
+- Uncaught errors from signed-in users (error text, short stack, page path without query,
+  browser, app version) go to `private.client_errors`, rate-limited (20 an hour), truncated,
+  kept 14 days, readable only by the owner (with 2FA) in the Owner panel. No message text,
+  media or settings are collected; network errors and harmless browser warnings are skipped.
 
 ## Owner
 - Identified by UUID in `private.platform_config`, never by username.

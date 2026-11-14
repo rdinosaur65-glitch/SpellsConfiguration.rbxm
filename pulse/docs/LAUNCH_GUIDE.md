@@ -116,7 +116,7 @@ select vault.create_secret('<the same long random string>', 'pulse_janitor_secre
    update private.platform_config set owner_user_id = '<your id>';
    ```
 3. In the app: Settings → **turn on two-step verification**. This is required: the Owner
-   panel (usage meters, reports, suspensions, 2FA resets, audit log) only works in a
+   panel (usage meters, reports, suspensions, 2FA resets, app errors, audit log) only works in a
    session confirmed with your own authenticator code.
 4. Read Settings → Privacy and rules once; adjust the wording in
    `apps/web/src/screens/Privacy.tsx` if you want, and redeploy.

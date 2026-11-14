@@ -4,6 +4,7 @@ import { rpc, supabase } from './supabase';
 import type { Profile, UserSettings } from './types';
 import { applyAppearance } from './theme';
 import { releaseAllMedia } from './media';
+import { resyncPush } from './push';
 
 interface AuthState {
   loading: boolean;
@@ -124,6 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         provisional.current = false;
         setTimeout(() => { void load(s); }, 0);
       }
+      // Signed in again on this device: keep its notifications attached to the new session.
+      if (event === 'SIGNED_IN' || event === 'MFA_CHALLENGE_VERIFIED') setTimeout(() => { void resyncPush(); }, 0);
     });
     return () => { alive = false; sub.subscription.unsubscribe(); };
   }, [load]);

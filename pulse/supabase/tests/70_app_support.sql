@@ -60,3 +60,30 @@ begin
   perform test.as_user(a);
   perform test.throws('select private.purge_unconfirmed_signups()', 'sqlstate:42501', 'users cannot run purge');
 end $$;
+
+-- App error reports (0029): rate-limited, truncated, owner-only, kept 14 days.
+do $$
+declare u uuid; o uuid; i integer;
+begin
+  perform test.as_superuser();
+  u := test.new_user('err_u_70'); o := test.new_user('err_o_70');
+  perform test.as_user(u);
+  perform public.report_client_error(repeat('x', 1000), repeat('s', 5000), '/chats/abc?secret=1', 'UA', 'v1');
+  perform test.as_superuser();
+  perform test.ok((select char_length(message) = 300 and char_length(stack) = 2000 and path = '/chats/abc'
+                   from private.client_errors where user_id = u), 'truncated, query string dropped');
+  insert into private.client_errors (user_id, message, created_at) values (u, 'old', now() - interval '20 days');
+  perform test.as_user(u);
+  for i in 1..19 loop perform public.report_client_error('e' || i, null, '/', null, null); end loop;
+  perform test.throws($q$select public.report_client_error('one too many', null, '/', null, null)$q$, 'rate_limited', 'rate-limited');
+  perform test.as_superuser();
+  perform test.ok(not exists (select 1 from private.client_errors where message = 'old'), 'older than 14 days removed');
+  perform test.as_user(u);
+  perform test.throws('select * from public.admin_client_errors()', 'forbidden', 'only the owner reads them');
+  perform test.as_superuser();
+  update private.platform_config set owner_user_id = o;
+  perform test.as_user(o, '{"aal":"aal2"}');
+  perform test.ok((select count(*) from public.admin_client_errors(100) where username = 'err_u_70') = 20, 'owner sees them');
+  perform test.as_superuser();
+  update private.platform_config set owner_user_id = null;
+end $$;

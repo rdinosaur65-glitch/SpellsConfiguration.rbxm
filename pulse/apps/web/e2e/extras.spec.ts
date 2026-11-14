@@ -26,8 +26,10 @@ test('reactions, message search and the photos/links/saved view', async ({ brows
               now() - interval '1 day' + g * interval '1 second', 'never'
          from public.profiles p, generate_series(1, 230) g where p.username = '${ua}'`);
   await b.reload();
+  await expect(b.getByTestId('messages')).toContainText('filler 230');   // loaded (typing earlier keeps the text unsent)
   await b.getByLabel('Message').fill('pizza tonight? see https://example.com/menu');
   await b.getByLabel('Message').press('Enter');
+  await expect(msg(b, 'pizza tonight')).not.toContainText('sending');
   await b.getByTestId('photo-input').setInputFiles({ name: 'pic.png', mimeType: 'image/png', buffer: PNG });
   await expect(b.getByTestId('message').last()).not.toContainText('sending', { timeout: 15_000 });
 
@@ -37,6 +39,7 @@ test('reactions, message search and the photos/links/saved view', async ({ brows
   await msg(a, 'pizza tonight').getByRole('button').first().click();
   await a.getByRole('button', { name: 'React ❤️' }).click();
   await expect(msg(a, 'pizza tonight').getByTestId('reactions')).toContainText('❤️');
+  await expect(msg(b, 'pizza tonight')).toHaveCount(1);
   await expect(msg(b, 'pizza tonight').getByRole('button', { name: /❤️ from Amy/ })).toBeVisible();
   await msg(b, 'pizza tonight').getByRole('button', { name: /❤️ from Amy/ }).click();
   await expect(msg(b, 'pizza tonight').getByTestId('reactions')).toContainText('❤️ 2');

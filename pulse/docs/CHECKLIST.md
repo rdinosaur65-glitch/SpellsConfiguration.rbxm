@@ -30,7 +30,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | media-url Edge Function | ✅ | Streams one copy per authorisation (no reusable URLs), no-store, Snap bytes only in a live session for current members; functions.test.mjs + e2e |
 | Realtime: postgres_changes under RLS | ✅ | e2e; every subscription filtered to the user; DELETE events no longer published (they bypass RLS) |
 | Realtime: private broadcast topic authorisation | ✅ | e2e typing indicator; tests 60, 75 (policies on realtime.messages), 90 |
-| Error monitoring / logging | 🟠 | Error boundary + Supabase logs; no client error table yet |
+| Error monitoring / logging | ✅ | App errors from signed-in users reach the Owner panel (0029; rate-limited, 14 days, no message content); Supabase logs for the server |
 | CI | ✅ | `.github/workflows/pulse.yml`: `unit` (domain, build, SQL on shim) and `supabase-e2e` (real stack, Edge Functions with Mailpit, Playwright) — green on GitHub (report 4) |
 
 ## Phase 1 — Foundation

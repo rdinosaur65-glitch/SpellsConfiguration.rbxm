@@ -16,11 +16,11 @@ import { StreakBadge } from '../components/Streak';
  * All rules stay on the server: search only returns people the privacy rules allow
  * (never someone who blocked you), and every action is an RPC with its own checks.
  */
-interface FriendRow { user_id: string; username: string; display_name: string; nickname: string | null; nickname_color: string | null;
+export interface FriendRow { user_id: string; username: string; display_name: string; nickname: string | null; nickname_color: string | null;
   online: boolean | null; last_active_at: string | null }
 interface BlockedRow { user_id: string; username: string; display_name: string }
 /** Anyone the user can act on: a friend, or the sender of a request. */
-interface Person { user_id: string; username: string; display_name: string; friend?: FriendRow }
+export interface Person { user_id: string; username: string; display_name: string; friend?: FriendRow }
 type Tab = 'discover' | 'requests' | 'friends';
 
 const normalizeQuery = (q: string) => q.trim().toLowerCase().replace(/^@+/, '');
@@ -289,7 +289,7 @@ const REPORT_REASONS: Array<[string, string]> = [
   ['self_harm', 'Self-harm concern'], ['underage', 'May be under age'], ['other', 'Something else'],
 ];
 
-function PersonMenu({ person, streak, onChat, onClose, onDone }:
+export function PersonMenu({ person, streak, onChat, onClose, onDone }:
   { person: Person; streak?: Streak; onChat?: () => void; onClose: () => void; onDone: (msg: string) => void }) {
   const { profile } = useAuth();
   const friend = person.friend;

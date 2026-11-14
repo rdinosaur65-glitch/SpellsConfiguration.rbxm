@@ -44,6 +44,7 @@ button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no
 .btn-subtle { background: var(--surface-2); }
 .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 .btn-sm { min-height: 44px; padding: 0 14px; font-size: 14px; }
+.title-btn { background: none; border: 0; padding: 4px 2px; margin: 0; color: inherit; font: inherit; cursor: pointer; min-width: 0; min-height: 44px; }
 .icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 999px; border: 0;
   background: transparent; color: var(--text); cursor: pointer; }
 .icon-btn:hover { background: var(--surface-2); }

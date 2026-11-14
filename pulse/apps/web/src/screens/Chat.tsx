@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type SetStateAction } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { canEditMessage, LIMITS } from '@pulse/domain';
 import { rpc, supabase } from '../lib/supabase';
@@ -15,6 +15,7 @@ import { useAuth } from '../lib/auth';
 import { milestonePending, useStreaks } from '../lib/streaks';
 import { MilestoneBanner, StreakBadge, StreakSheet } from '../components/Streak';
 import { GallerySheet, QUICK_REACTIONS, ReactionChips, SearchSheet, useReactions } from '../components/ChatExtras';
+import { PersonMenu, type FriendRow, type Person } from './People';
 
 type Expiry = 'after_view' | 'after_view_24h' | 'after_view_7d' | 'never';
 const EXPIRY_TEXT: Record<Expiry, string> = {
@@ -543,6 +544,16 @@ export function Chat() {
   const typers = Object.keys(typing).map(nameOf);
   const byId = useMemo(() => new Map((messages ?? []).map((m) => [m.id, m])), [messages]);
   const handleOf = (uid: string) => people.find((p) => p.user_id === uid)?.username;
+  // Direct chats: the other person's profile, with Remove friend / Block / Report.
+  const navigate = useNavigate();
+  const [profileFor, setProfileFor] = useState<Person | null>(null);
+  async function openProfile() {
+    if (!other) return;
+    setShowExpiry(false);
+    const friends = await rpc<FriendRow[]>('list_friends').catch(() => [] as FriendRow[]);
+    setProfileFor({ user_id: other.user_id, username: other.username, display_name: other.display_name,
+      friend: friends.find((f) => f.user_id === other.user_id) });
+  }
   const menuExpired = menuFor ? isExpired(menuFor) : false;
 
   function snapBubble(m: UiMessage) {
@@ -563,7 +574,9 @@ export function Chat() {
   return (
     <div className="screen screen-full">
       <div style={{ padding: '0 16px' }}>
-        <Header title={<span className="title-row" style={{ justifyContent: 'center' }}><span className="truncate" data-testid="chat-title">{title}</span><StreakBadge streak={streak} onClick={() => setStreakOpen(true)} /></span>}
+        <Header title={<span className="title-row" style={{ justifyContent: 'center' }}>{conv?.kind === 'direct' && other
+            ? <button className="title-btn truncate" data-testid="chat-title" onClick={() => void openProfile()}>{title}</button>
+            : <span className="truncate" data-testid="chat-title">{title}</span>}<StreakBadge streak={streak} onClick={() => setStreakOpen(true)} /></span>}
           left={<Link to="/chats" className="icon-btn" aria-label="Back to chats"><Icon name="back" /></Link>}
           right={<button className="icon-btn" aria-label="Chat settings" onClick={() => setShowExpiry(true)}><Icon name="more" /></button>} />
       </div>
@@ -718,6 +731,7 @@ export function Chat() {
       {showExpiry && conv && (
         <Sheet label="Chat settings" onClose={() => setShowExpiry(false)}>
           {conv.kind === 'group' && <Link className="sheet-item" to={`/chats/${convId}/info`}>Group info and members</Link>}
+          {conv.kind === 'direct' && other && <button className="sheet-item" onClick={() => void openProfile()}>Profile · remove friend or block</button>}
           <button className="sheet-item" onClick={() => { setShowExpiry(false); setShowSearch(true); }}>Search in this chat</button>
           <button className="sheet-item" onClick={() => { setShowExpiry(false); setShowGallery(true); }}>Photos, links and saved</button>
           <p className="muted small" style={{ margin: '4px 4px 8px' }}>Disappearing messages{conv.kind === 'group' ? ' (group admins can change this)' : ''}. A change applies to new messages.</p>
@@ -731,6 +745,8 @@ export function Chat() {
           <button className="sheet-item" onClick={() => setShowExpiry(false)}>Close</button>
         </Sheet>
       )}
+      {profileFor && <PersonMenu person={profileFor} streak={streak} onClose={() => setProfileFor(null)}
+        onDone={(msg) => { setProfileFor(null); showToast(msg); if (msg === 'Blocked' || msg === 'Friend removed') navigate('/chats', { replace: true }); }} />}
       {showSearch && <SearchSheet convId={convId} title="Search in this chat" nameOf={(uid) => (uid === me ? 'You' : nameOf(uid))}
         onPick={(h) => { setShowSearch(false); void jumpTo(h.message_id); }} onClose={() => setShowSearch(false)} />}
       {showGallery && <GallerySheet convId={convId} dataSaver={settings?.data_saver === true}

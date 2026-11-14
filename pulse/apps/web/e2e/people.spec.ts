@@ -99,3 +99,47 @@ test('New chat: one friend opens your chat with them', async ({ browser }) => {
   await expect(a.getByTestId('chat-title')).toHaveText('Nik');
   await ca.close(); await cb.close();
 });
+
+test('From a chat: tap the name to remove a friend; block from the ⋯ menu', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const [ca, cb] = await Promise.all([browser.newContext(), browser.newContext()]);
+  const a = await ca.newPage(), b = await cb.newPage();
+  const ua = uniq('ca_'), ub = uniq('cb_');
+  await signUp(a, ua, 'Cal'); await signUp(b, ub, 'Cleo');
+  const { befriendUi } = await import('./helpers');
+  await befriendUi(a, b, ub, 'Cal');
+  const openChatWithCleo = async () => {
+    await openPeople(a, 'Friends');
+    await a.getByTestId('friend-row').filter({ hasText: 'Cleo' }).getByRole('button', { name: 'Chat with Cleo' }).click();
+    await expect(a.getByTestId('chat-title')).toHaveText('Cleo');
+  };
+
+  // Tap the name in the chat header: profile with Remove friend / Block / Report.
+  await openChatWithCleo();
+  await a.getByTestId('chat-title').click();
+  const sheet = a.getByRole('dialog', { name: `Options for ${ub}` });
+  await expect(sheet).toContainText(`@${ub}`);
+  await expect(sheet.getByRole('button', { name: 'Block' })).toBeVisible();
+  a.once('dialog', (d) => d.accept());
+  await sheet.getByRole('button', { name: 'Remove friend' }).click();
+  await expect(a.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  await openPeople(a, 'Friends');
+  await expect(a.getByText('No friends yet')).toBeVisible();
+
+  // Friends again, then block from the chat's ⋯ menu.
+  await befriendUi(a, b, ub, 'Cal');
+  await openChatWithCleo();
+  await a.getByRole('button', { name: 'Chat settings' }).click();
+  await a.getByRole('button', { name: 'Profile · remove friend or block' }).click();
+  a.once('dialog', (d) => d.accept());
+  await a.getByRole('dialog', { name: `Options for ${ub}` }).getByRole('button', { name: 'Block' }).click();
+  await expect(a.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+  await openPeople(a, 'Discover');
+  await a.getByLabel('Search by username').fill(ub);
+  await expect(a.getByTestId('person-result').filter({ hasText: `@${ub}` })).toContainText('Blocked');
+  // Cleo can no longer find Cal.
+  await openPeople(b, 'Discover');
+  await b.getByLabel('Search by username').fill(ua);
+  await expect(b.getByRole('button', { name: `Add @${ua}` })).toHaveCount(0);
+  await ca.close(); await cb.close();
+});

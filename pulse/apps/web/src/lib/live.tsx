@@ -26,7 +26,7 @@ const LiveContext = createContext<Live | null>(null);
  *  - conversations UPDATE for the user's own chats (last_message_at moves on each send),
  *  - the user's own conversation_members rows (new chats, pins, mutes, leaving),
  *  - read receipts for messages the user sent ("Opened"),
- *  - Snap view state changes,
+ *  - Snap view state changes for Snaps the user sent or received,
  *  - friend requests sent to or by the user.
  * Lists are re-read after any reconnect and when the app returns to the foreground, so a
  * missed event never leaves them stale.
@@ -72,7 +72,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     const ch = supabase.channel(`live:${me}:${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members', filter: `user_id=eq.${me}` }, soon)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reads', filter: `sender_id=eq.${me}` }, soon)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'snap_recipients' }, soon)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'snap_recipients', filter: `sender_id=eq.${me}` }, soon)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'snap_recipients', filter: `recipient_id=eq.${me}` }, soon)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests', filter: `recipient_id=eq.${me}` },
           () => { void reloadRequests(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests', filter: `sender_id=eq.${me}` },

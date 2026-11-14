@@ -81,7 +81,8 @@ select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/stora
 select vault.create_secret('<the same long random string>', 'pulse_janitor_secret');
 ```
 `media-url` needs nothing else: it uses the project's own URL and keys, which Supabase
-injects into every function. Locally, `npx supabase functions serve --env-file
+injects into every function. It streams each photo/Snap itself (one authorised download
+per call), so every media view is one function invocation. Locally, `npx supabase functions serve --env-file
 supabase/functions/.env` serves both (the `.env` holds a throwaway `JANITOR_SECRET` and is
 git-ignored).
 

@@ -37,16 +37,19 @@ immediately, not when its JWT expires. Its own state is readable only through
 `my_profile()`; friends can no longer read anyone's moderation state.
 
 ## Abuse controls
-- Per-user fixed-window rate limits on every write RPC (messages, edits, reactions, reads,
-  pins, mutes, reports, requests, uploads, Snap opens and media URLs) plus a daily cap on
-  messages. Note: a refused call rolls back its own counter, so limits count calls that
-  pass validation.
+- Per-user fixed-window rate limits on every RPC that creates data or can be repeated
+  cheaply (messages, edits, deletes, reactions, reads, pins, mutes, mode changes, reports,
+  requests, uploads and deletions, Snap opens/saves, media downloads), plus a daily cap of
+  2,000 messages that also counts Snap messages and mode-change notices. The remaining
+  write RPCs are bounded by those (e.g. confirm_upload by authorize_upload). A refused call
+  rolls back its own counter, so limits count calls that pass validation.
 - Database-size guard: text and metadata writes are refused above 90% of the 500 MB budget
   (cached size, refreshed by maintenance). Daily text quota per user (2 MB). Edits: at most
   5 per message, no-op edits ignored.
 - Search needs ≥ 3 characters, returns ≤ 20 minimal cards, hides blocked, non-active and
-  unconfirmed accounts. A block looks like a missing account (`user_not_found`), and a
-  blocked person's pending request reads "declined", so a block cannot be detected.
+  unconfirmed accounts. In search and friend requests a block looks like a missing account
+  (`user_not_found`) and a blocked person's pending request reads "declined". A blocked
+  person can still infer the block, because their direct chat with the blocker disappears.
 - Blocks: the blocked person loses the direct chat entirely (history, roster, settings,
   read receipts, topic, Snaps, live Snap sessions). In groups, each side stops seeing the
   other's messages, reactions and receipts and they are left out of the roster.
@@ -62,11 +65,15 @@ immediately, not when its JWT expires. Its own state is readable only through
   arrive, so an object larger than its reservation (or of another type) is refused;
   `confirm_upload()` re-verifies as defence in depth. At most 5 reservations per user may
   be outstanding; unconfirmed ones are released after 15 minutes.
-- No public URLs and no client read policy on the bucket — not even for owners — so nobody
-  can mint long-lived signed URLs. Everyone (owners too) gets ≤ 60 s signed URLs from the
-  media-url function after an authorisation RPC that charges egress.
+- No public URLs, no signed URLs and no client read policy on the bucket — not even for
+  owners. The media-url function authorises each request with the viewer's JWT (charging
+  that download to the viewer's daily share) and streams exactly one copy back, marked
+  `no-store`; the app also fetches with `cache: 'no-store'`, so media is not written to the
+  browser's disk cache. Snap bytes are released only during a live viewing session and only
+  to current members of the chat.
 - Deduplicated media shared by several messages is deleted only when nothing references it;
-  uploads never attached (and replaced avatars) are reclaimed after a day.
+  uploads never attached (and replaced avatars) are reclaimed after a day. Deleted media
+  keeps counting against the user's share and the pool until the janitor has removed it.
   Snap media additionally requires a live viewing session and the URL lifetime is
   capped to the session's remaining time.
 - Honest limitation: once bytes reach a device they can be captured (screenshots,

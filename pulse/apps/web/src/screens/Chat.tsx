@@ -29,6 +29,7 @@ const PAGE = 200;
 // Unsent messages survive navigating between chats (in memory only: message text is
 // never written to device storage). They are retried on reconnect and when the chat opens.
 const outbox = new Map<string, UiMessage[]>();
+const outboxBlobs = new Map<string, Blob>();   // photos waiting to be (re)sent, keyed by client_msg_id
 function outboxPut(m: UiMessage) { outbox.set(m.conversation_id, [...(outbox.get(m.conversation_id) ?? []).filter((x) => x.client_msg_id !== m.client_msg_id), m]); }
 function outboxDrop(conv: string, clientId: string) {
   const left = (outbox.get(conv) ?? []).filter((x) => x.client_msg_id !== clientId);
@@ -54,7 +55,6 @@ export function Chat() {
   const [typing, setTyping] = useState<Record<string, number>>({});
   const [snapStates, setSnapStates] = useState<SnapState[]>([]);
   const [viewing, setViewing] = useState<string | null>(null);
-  const photoBlobs = useRef(new Map<string, Blob>());
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, showToast] = useToast();
   const listRef = useRef<HTMLDivElement>(null);
@@ -153,8 +153,9 @@ export function Chat() {
   }, [convId, markRead, loadSnaps]);
 
   const deliver = useCallback(async (m: UiMessage) => {
-    const blob = m.kind === 'photo' ? photoBlobs.current.get(m.client_msg_id) : undefined;
-    if (m.kind === 'text') outboxPut({ ...m, local: 'sending' });
+    const blob = m.kind === 'photo' ? outboxBlobs.get(m.client_msg_id) : undefined;
+    if (m.kind === 'photo' && !blob) { outboxDrop(m.conversation_id, m.client_msg_id); return; }
+    outboxPut({ ...m, local: 'sending' });
     try {
       // Photos: upload first (idempotent: same bytes → same asset), then the message.
       const asset = blob ? await uploadMedia(blob, 'chat') : null;
@@ -163,13 +164,15 @@ export function Chat() {
         p_conv: m.conversation_id, p_kind: m.kind, p_body: m.body, p_client_msg_id: m.client_msg_id,
         p_media_asset: asset, p_reply_to: m.reply_to_id,
       });
-      photoBlobs.current.delete(m.client_msg_id);
+      outboxBlobs.delete(m.client_msg_id);
       outboxDrop(m.conversation_id, m.client_msg_id);
       setMessages((prev) => prev && (prev ?? []).map((x) => x.client_msg_id === m.client_msg_id && x.sender_id === m.sender_id
         ? { ...x, id: x.local ? id : x.id, local: undefined } : x));
     } catch (e) {
       const offline = navigator.onLine === false || /fetch|network/i.test((e as Error)?.message ?? '');
-      if (offline && m.kind === 'text') outboxPut({ ...m, local: 'failed' }); else outboxDrop(m.conversation_id, m.client_msg_id);
+      // Offline: keep it queued (in memory) and send it on reconnect. Other errors: keep the
+      // message on screen with Retry; a photo keeps its bytes for that retry.
+      if (offline) outboxPut({ ...m, local: 'failed' }); else outboxDrop(m.conversation_id, m.client_msg_id);
       setMessages((prev) => prev && prev.map((x) => x.client_msg_id === m.client_msg_id ? { ...x, local: 'failed' } : x));
       showToast(offline ? 'Offline — it will send when you reconnect.' : errorMessage(e));
     }
@@ -200,12 +203,13 @@ export function Chat() {
         if (p.eventType === 'DELETE') return;
         const row = p.new as Message;
         upsert(row);
+        if (p.eventType === 'INSERT' && row.kind === 'snap') void loadSnaps();
         if (p.eventType === 'INSERT' && row.sender_id !== me) {
           markRead();
           setTyping((t) => { const n = { ...t }; delete n[row.sender_id]; return n; });
         }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'snap_recipients', filter: `conversation_id=eq.${convId}` },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'snap_recipients', filter: `conversation_id=eq.${convId}` },
           () => { void loadSnaps(); })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `id=eq.${convId}` }, (p) => {
         setConv((c) => c ? { ...c, expiry_mode: (p.new as { expiry_mode: Expiry }).expiry_mode, name: (p.new as { name: string | null }).name } : c);
@@ -287,11 +291,13 @@ export function Chat() {
     await deliver(m);
   }
 
+  const closeViewer = useCallback(() => { setViewing(null); void loadSnaps(); markRead(); }, [loadSnaps, markRead]);
+
   async function sendPhoto(file: File) {
     let blob: Blob;
     try { blob = await compressImage(file); } catch (e) { showToast(errorMessage(e)); return; }
     const clientId = crypto.randomUUID();
-    photoBlobs.current.set(clientId, blob);
+    outboxBlobs.set(clientId, blob);
     const m: UiMessage = {
       id: `local-${clientId}`, conversation_id: convId, sender_id: me, kind: 'photo', body: null, media_asset_id: null,
       reply_to_id: replyTo?.id ?? null, client_msg_id: clientId, created_at: new Date().toISOString(),
@@ -365,18 +371,24 @@ export function Chat() {
                    data-testid="message">
                 {showAuthor && <span className="msg-author">{nameOf(m.sender_id)}{handleOf(m.sender_id) ? <span className="muted"> @{handleOf(m.sender_id)}</span> : null}</span>}
                 {quoted && <span className="msg-meta">↪ {quoted.deleted_at ? 'deleted message' : (quoted.body ?? '').slice(0, 60)}</span>}
-                {m.kind === 'snap' && !m.deleted_at ? snapBubble(m) : (
-                <button className={`bubble${m.deleted_at ? ' bubble-deleted' : ''}${m.kind === 'photo' && !m.deleted_at ? ' bubble-media' : ''}`}
+                {m.kind === 'snap' && !m.deleted_at ? snapBubble(m)
+                  : m.kind === 'photo' && !m.deleted_at ? (
+                  // A photo may contain its own "Tap to load" button, so the bubble itself is not one.
+                  <div className="bubble bubble-media">
+                    {m.preview ? <img className="chat-photo" src={m.preview} alt="Photo you sent" />
+                      : m.media_asset_id ? <ChatImage assetId={m.media_asset_id} dataSaver={settings?.data_saver === true}
+                          alt={mine ? 'Photo you sent' : `Photo from ${nameOf(m.sender_id)}`} /> : 'Photo'}
+                  </div>
+                ) : (
+                <button className={`bubble${m.deleted_at ? ' bubble-deleted' : ''}`}
                         style={{ border: 0, font: 'inherit', textAlign: 'left', cursor: 'pointer' }}
                         onClick={() => !m.deleted_at && !m.local && setMenuFor(m)}>
-                  {m.deleted_at ? 'Message deleted' : m.kind === 'text' ? m.body
-                    : m.kind === 'photo' ? (m.preview ? <img className="chat-photo" src={m.preview} alt="Photo you sent" />
-                      : m.media_asset_id ? <ChatImage assetId={m.media_asset_id} dataSaver={settings?.data_saver === true}
-                          alt={mine ? 'Photo you sent' : `Photo from ${nameOf(m.sender_id)}`} /> : 'Photo')
-                    : `[${m.kind}]`}
+                  {m.deleted_at ? 'Message deleted' : m.kind === 'text' ? m.body : `[${m.kind}]`}
                 </button>)}
                 <span className="msg-meta">
                   {clockTime(m.created_at)}{m.edited_at && !m.deleted_at ? ' · edited' : ''}
+                  {m.kind === 'photo' && !m.deleted_at && !m.local && <> · <button className="link-btn small" aria-label="Photo options"
+                    onClick={() => setMenuFor(m)}>Options</button></>}
                   {m.local === 'sending' && ' · sending…'}
                   {m.local === 'failed' && <> · not sent <button className="link-btn small" onClick={() => {
                     setMessages((p) => (p ?? []).map((x) => x.client_msg_id === m.client_msg_id ? { ...x, local: 'sending' } : x));
@@ -449,7 +461,7 @@ export function Chat() {
           <button className="sheet-item" onClick={() => setShowExpiry(false)}>Close</button>
         </Sheet>
       )}
-      {viewing && <SnapViewer snapId={viewing} onClose={() => { setViewing(null); void loadSnaps(); markRead(); }} />}
+      {viewing && <SnapViewer snapId={viewing} onClose={closeViewer} />}
       {toast}
     </div>
   );

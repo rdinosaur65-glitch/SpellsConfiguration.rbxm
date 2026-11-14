@@ -40,67 +40,90 @@ function openOnce(snapId: string): Promise<OpenedSnap | undefined> {
 
 /**
  * Full-screen Snap viewer. The server decides everything: open_snap() starts a viewing
- * session (first view or the single replay), the media URL lives only as long as that
- * session, and close_snap_view() ends it. The countdown here is cosmetic.
+ * session (first view or the single replay), media-url streams the bytes only while that
+ * session is live, and close_snap_view() ends it. The countdown here is cosmetic and runs
+ * on the device's own monotonic clock (never compared with server timestamps).
+ * The session is always closed: on the timer, on Close/tap, on Escape, when the app is
+ * hidden, when the viewer is unmounted (e.g. the back gesture), and when it is dismissed
+ * before open_snap() even answered.
  */
+const UNLIMITED_LOCAL_CAP_S = 15 * 60;   // mirrors unlimited_view_max on the server
+
 export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (status: string | null) => void }) {
   const [view, setView] = useState<OpenedSnap | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [left, setLeft] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const closing = useRef(false);
-  const sessionRef = useRef<string | null>(null);
-  const srcRef = useRef<string | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const st = useRef({ closed: false, mounted: false, session: null as string | null, src: null as string | null });
 
-  const close = useCallback(async () => {
-    if (closing.current) return;
-    closing.current = true;
+  const finish = useCallback(async (notify: boolean) => {
+    const s = st.current;
+    if (s.closed) return;
+    s.closed = true;
     let status: string | null = null;
-    if (sessionRef.current) {
-      try { status = await rpc<string>('close_snap_view', { p_snap: snapId, p_session: sessionRef.current }); } catch { /* server expires it anyway */ }
+    if (s.session) {
+      try { status = await rpc<string>('close_snap_view', { p_snap: snapId, p_session: s.session }); } catch { /* server expires it anyway */ }
     }
-    if (srcRef.current) URL.revokeObjectURL(srcRef.current);
-    onClose(status);
-  }, [snapId, onClose]);
+    if (s.src) { URL.revokeObjectURL(s.src); s.src = null; }
+    if (notify) onCloseRef.current(status);
+  }, [snapId]);
+
+  // Close the session if the viewer goes away without an explicit close. (Deferred one
+  // tick so React's development double-mount does not count as leaving.)
+  useEffect(() => {
+    st.current.mounted = true;
+    return () => {
+      st.current.mounted = false;
+      setTimeout(() => { if (!st.current.mounted) void finish(false); }, 0);
+    };
+  }, [finish]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const v = await openOnce(snapId);
-        if (!v || !alive) return;
-        sessionRef.current = v.session_id;
+        if (!v) return;
+        st.current.session = v.session_id;
+        if (st.current.closed) {          // dismissed while open_snap was in flight
+          void rpc('close_snap_view', { p_snap: snapId, p_session: v.session_id }).catch(() => {});
+          return;
+        }
+        if (!alive) return;
         setView(v);
         const url = await snapObjectUrl(snapId, v.session_id);
-        if (!alive) { URL.revokeObjectURL(url); return; }
-        srcRef.current = url; setSrc(url);
-        if (!v.unlimited && v.view_seconds) setLeft(v.view_seconds);
+        if (!alive || st.current.closed) { URL.revokeObjectURL(url); return; }
+        st.current.src = url; setSrc(url);
       } catch (e) { if (alive) setError(errorMessage(e)); }
     })();
     return () => { alive = false; };
   }, [snapId]);
 
-  // Countdown starts once the image is on screen; also respect the server deadline.
+  // Countdown from the moment the image is on screen, on a fixed local end time.
   useEffect(() => {
-    if (left === null || !src) return;
-    if (left <= 0) { void close(); return; }
-    const t = setTimeout(() => setLeft((s) => (s ?? 1) - 1), 1000);
-    return () => clearTimeout(t);
-  }, [left, src, close]);
+    if (!view || !src) return;
+    const seconds = view.unlimited || !view.view_seconds ? UNLIMITED_LOCAL_CAP_S : view.view_seconds;
+    const end = performance.now() + seconds * 1000;
+    const tick = () => {
+      const remaining = Math.ceil((end - performance.now()) / 1000);
+      if (remaining <= 0) { void finish(true); return; }
+      if (!view.unlimited) setLeft(remaining);
+    };
+    tick();
+    const t = setInterval(tick, 200);
+    return () => clearInterval(t);
+  }, [view, src, finish]);
+
   useEffect(() => {
-    if (!view) return;
-    const ms = new Date(view.deadline).getTime() - Date.now();
-    const t = setTimeout(() => void close(), Math.max(0, ms));
-    return () => clearTimeout(t);
-  }, [view, close]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') void close(); };
-    const onHide = () => { if (document.visibilityState === 'hidden') void close(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') void finish(true); };
+    const onHide = () => { if (document.visibilityState === 'hidden') void finish(true); };
     document.addEventListener('keydown', onKey);
     document.addEventListener('visibilitychange', onHide);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('visibilitychange', onHide); };
-  }, [close]);
+  }, [finish]);
 
   async function save() {
     if (!view || !src) return;
@@ -112,8 +135,10 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     } catch (e) { setError(errorMessage(e)); }
   }
 
+  // Taps close it once something is on screen (a stray tap while loading does not).
+  const tapClose = () => { if (src || error) void finish(true); };
   return (
-    <div className="snap-viewer" role="dialog" aria-modal="true" aria-label="Snap" data-testid="snap-viewer" onClick={() => void close()}>
+    <div className="snap-viewer" role="dialog" aria-modal="true" aria-label="Snap" data-testid="snap-viewer" onClick={tapClose}>
       {error ? <p className="snap-msg">{error}</p> : !src ? <Spinner /> : (
         <img src={src} alt="Snap" className="snap-image" data-testid="snap-image" draggable={false}
              onContextMenu={(e) => e.preventDefault()} />
@@ -124,7 +149,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
           {view?.view_number === 2 ? ' · replay' : ''}
         </span>
         {view?.allow_saving && src && <button className="btn btn-sm btn-subtle" onClick={() => void save()} disabled={saved}>{saved ? 'Saved' : 'Save'}</button>}
-        <button className="btn btn-sm btn-ghost" onClick={() => void close()}>Close</button>
+        <button className="btn btn-sm btn-ghost" onClick={() => void finish(true)}>Close</button>
       </div>
     </div>
   );

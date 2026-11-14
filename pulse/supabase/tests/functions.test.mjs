@@ -71,13 +71,20 @@ async function upload(user, purpose, size = 2048) {
   return { asset: r.asset_id, path: r.object_path, bytes };
 }
 
-const mediaUrl = (token, body) => call('/functions/v1/media-url', { token, body });
-async function fetchSigned(path) {
-  const res = await fetch(`${URL_}${path}`);
-  return { status: res.status, bytes: Buffer.from(await res.arrayBuffer()) };
+/** One authorised download through media-url (bytes streamed by the function). */
+async function download(token, body) {
+  const res = await fetch(`${URL_}/functions/v1/media-url`, {
+    method: 'POST',
+    headers: { apikey: ANON, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  const bytes = Buffer.from(await res.arrayBuffer());
+  return { status: res.status, bytes, type: res.headers.get('content-type'), cache: res.headers.get('cache-control') ?? '' };
 }
+const egressOf = (id) => Number(sql(`select coalesce((select egress_bytes from private.usage_daily
+  where user_id = '${id}' and day = (now() at time zone 'utc')::date), 0)`));
 
-test('media-url signs short URLs only for people allowed to see the media', async () => {
+test('media-url streams one copy per authorisation, only to people allowed to see it', async () => {
   const a = await newUser('mua'), b = await newUser('mub'), x = await newUser('mux');
   await befriend(a, b);
   const pic = await upload(a, 'chat');
@@ -85,40 +92,50 @@ test('media-url signs short URLs only for people allowed to see the media', asyn
   await rpc(a.token, 'set_chat_expiry', { p_conv: conv, p_mode: 'never' });
   await rpc(a.token, 'send_message', { p_conv: conv, p_kind: 'photo', p_body: null, p_client_msg_id: randomUUID(), p_media_asset: pic.asset });
 
-  const ok = await mediaUrl(b.token, { asset_id: pic.asset });
-  assert.equal(ok.status, 200, JSON.stringify(ok.data));
-  assert.ok(ok.data.expires_in <= 60 && ok.data.expires_in >= 1, 'URL lives at most 60 s');
-  assert.equal(ok.data.mime_type, 'image/jpeg');
-  const got = await fetchSigned(ok.data.path);
+  const before = egressOf(b.id);
+  const got = await download(b.token, { asset_id: pic.asset });
   assert.equal(got.status, 200);
-  assert.ok(got.bytes.equals(pic.bytes), 'signed URL serves the uploaded bytes');
+  assert.ok(got.bytes.equals(pic.bytes), 'the uploaded bytes');
+  assert.equal(got.type, 'image/jpeg');
+  assert.match(got.cache, /no-store/, 'never kept in a browser or proxy cache');
+  await download(b.token, { asset_id: pic.asset });
+  assert.equal(egressOf(b.id) - before, 2 * pic.bytes.length, 'every download is charged (no free re-fetch)');
 
-  assert.equal((await mediaUrl(a.token, { asset_id: pic.asset })).status, 200, 'owner downloads via media-url too');
-  assert.equal((await mediaUrl(x.token, { asset_id: pic.asset })).status, 404, 'stranger refused');
-  assert.equal((await mediaUrl(undefined, { asset_id: pic.asset })).status, 401, 'no JWT refused at the gateway');
-  assert.equal((await mediaUrl(b.token, { asset_id: 'nope' })).status, 400, 'malformed id');
-  // No direct path around the function: the bucket is private and has no read policy.
+  assert.equal((await download(a.token, { asset_id: pic.asset })).status, 200, 'owner downloads via media-url too');
+  assert.equal((await download(x.token, { asset_id: pic.asset })).status, 404, 'stranger refused');
+  assert.equal((await download(undefined, { asset_id: pic.asset })).status, 401, 'no JWT refused at the gateway');
+  assert.equal((await download(b.token, { asset_id: 'nope' })).status, 400, 'malformed id');
+  // No path around the function: the bucket is private and has no read policy.
   assert.notEqual((await call(`/storage/v1/object/media/${pic.path}`, { method: 'GET', token: b.token })).status, 200);
   assert.notEqual((await call(`/storage/v1/object/media/${pic.path}`, { method: 'GET', token: a.token })).status, 200);
   assert.notEqual((await call(`/storage/v1/object/sign/media/${pic.path}`, { token: a.token, body: { expiresIn: 31536000 } })).status, 200,
-    'owners cannot mint long-lived URLs');
+    'nobody can mint a signed URL');
 });
 
-test('Snap media is reachable only during a live viewing session', async () => {
-  const a = await newUser('sna'), b = await newUser('snb');
-  await befriend(a, b);
+test('Snap bytes only during a live viewing session, only for current members', async () => {
+  const a = await newUser('sna'), b = await newUser('snb'), c = await newUser('snc');
+  await befriend(a, b); await befriend(a, c);
   const img = await upload(a, 'snap');
   const snap = await rpc(a.token, 'send_snap', { p_media_asset: img.asset, p_recipients: [b.id], p_groups: null,
     p_view_seconds: 3, p_allow_saving: false, p_client_id: randomUUID() });
-  assert.equal((await mediaUrl(b.token, { snap_id: snap, session_id: randomUUID() })).status, 403, 'no session, no media');
+  assert.equal((await download(b.token, { snap_id: snap, session_id: randomUUID() })).status, 403, 'no session, no bytes');
   const [view] = await rpc(b.token, 'open_snap', { p_snap: snap });
-  const ok = await mediaUrl(b.token, { snap_id: snap, session_id: view.session_id });
-  assert.equal(ok.status, 200, JSON.stringify(ok.data));
-  assert.ok(ok.data.expires_in <= 5, 'URL never outlives the 3 s (+grace) session');
-  assert.ok((await fetchSigned(ok.data.path)).bytes.equals(img.bytes));
+  const ok = await download(b.token, { snap_id: snap, session_id: view.session_id });
+  assert.equal(ok.status, 200);
+  assert.ok(ok.bytes.equals(img.bytes));
+  assert.match(ok.cache, /no-store/);
   await rpc(b.token, 'close_snap_view', { p_snap: snap, p_session: view.session_id });
-  assert.equal((await mediaUrl(b.token, { snap_id: snap, session_id: view.session_id })).status, 403, 'closed session refused');
-  assert.equal((await mediaUrl(a.token, { snap_id: snap, session_id: view.session_id })).status, 403, 'sender has no session');
+  assert.equal((await download(b.token, { snap_id: snap, session_id: view.session_id })).status, 403, 'closed session refused');
+  assert.equal((await download(a.token, { snap_id: snap, session_id: view.session_id })).status, 403, 'sender has no session');
+
+  // A group Snap: a member removed afterwards cannot open it or get its bytes.
+  const g = await rpc(a.token, 'create_group', { p_name: 'snaps', p_members: [b.id, c.id] });
+  const img2 = await upload(a, 'snap');
+  const gsnap = await rpc(a.token, 'send_snap', { p_media_asset: img2.asset, p_recipients: null, p_groups: [g],
+    p_view_seconds: 3, p_allow_saving: false, p_client_id: randomUUID() });
+  await rpc(a.token, 'remove_group_member', { p_conv: g, p_user: c.id });
+  const denied = await call('/rest/v1/rpc/open_snap', { token: c.token, body: { p_snap: gsnap } });
+  assert.notEqual(denied.status, 200, 'removed member cannot open the group Snap');
 });
 
 test('storage-janitor removes released objects (direct call and via pg_cron/pg_net)', async () => {

@@ -346,18 +346,17 @@ begin
   conv := public.create_direct_conversation(v);
   perform public.send_message(conv, 'photo', null, gen_random_uuid(), img);
   perform test.as_superuser();
-  update private.platform_config set daily_egress_user_bytes = 5000;
+  update private.platform_config set daily_egress_user_bytes = 10000;
   perform test.as_user(v);
   perform public.authorize_media_access(img);
-  perform public.authorize_media_access(img);   -- re-fetch: not charged again
+  perform public.authorize_media_access(img);   -- every authorisation is one download (0017)
   perform test.as_superuser();
-  perform test.ok((select egress_bytes from private.usage_daily where user_id = v) = 4000, 'charged once');
-  delete from private.egress_recent where user_id = v;
+  perform test.ok((select egress_bytes from private.usage_daily where user_id = v) = 8000, 'charged per authorisation');
   perform test.as_user(v);
   perform test.throws(format('select public.authorize_media_access(%L)', img), 'egress_quota_exceeded',
                       'per-user egress share');
   perform test.as_superuser();
-  update private.platform_config set daily_egress_user_bytes = 41943040;
+  update private.platform_config set daily_egress_user_bytes = 67108864;
 end $$;
 
 -- Maintenance: a failing account deletion does not stop expiry; unattached uploads

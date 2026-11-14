@@ -46,11 +46,10 @@ test('photos in chat and Snaps from the camera, through media-url', async ({ bro
   await a.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(a.getByText('Snap sent to 1 chat')).toBeVisible({ timeout: 15_000 });
 
-  // Ben: the chat list says "New Snap"; he views it once, then replays it once.
-  await b.getByRole('link', { name: 'Back to chats' }).click();
-  await expect(b.getByTestId('chat-row').first()).toContainText('New Snap');
-  await b.getByTestId('chat-row').first().getByRole('link').click();
-  await b.getByTestId('snap-received').filter({ hasText: 'Tap to view Snap' }).click();
+  // Ben still has the chat open: the Snap appears live and can be opened right away.
+  const fresh = b.getByTestId('snap-received').filter({ hasText: 'Tap to view Snap' });
+  await expect(fresh).toBeEnabled();
+  await fresh.click();
   await expect(b.getByTestId('snap-viewer')).toBeVisible();
   await imageLoaded(b, 'snap-image');
   await expect(b.getByTestId('snap-viewer')).toBeHidden({ timeout: 10_000 });   // timer ends the view
@@ -60,6 +59,8 @@ test('photos in chat and Snaps from the camera, through media-url', async ({ bro
   await b.getByRole('button', { name: 'Close' }).click();
   await expect(b.getByTestId('snap-received').last()).toHaveText(/Snap opened/);
   await expect(b.getByTestId('snap-received').last()).toBeDisabled();
+  await b.getByRole('link', { name: 'Back to chats' }).click();
+  await expect(b.getByTestId('chat-row').first()).toContainText('Received');
 
   // Pia sees it was opened.
   await nav(a, 'Chats').click();

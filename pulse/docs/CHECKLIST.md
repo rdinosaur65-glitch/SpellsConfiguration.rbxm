@@ -22,12 +22,12 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Migrations (15) apply cleanly | ✅ | shim + real local Supabase |
 | RLS on every table, function lockdown | ✅ | tests 10, 60, 80 (catalog checks incl. 2FA + account-state gates, definer RPCs check the caller, indexed FKs) |
 | API contract: no STABLE function writes (PostgREST read-only) | ✅ | test 80 now also flags STABLE→VOLATILE calls (caught conversation_gallery, fixed in 0015) |
-| Rate limiting | ✅ | Every write RPC; test 75 drives send/edit/react/mute/report/friend-request limits, test 50 search |
+| Rate limiting | ✅ | Every data-creating or cheaply repeatable RPC (others bounded by those); tests 50, 75, 76 |
 | Free-tier guards: registration cap, pools, per-user quotas, egress share, DB-size write guard, daily text quota | ✅ | tests 10, 50, 75 (0014) |
 | Unconfirmed sign-ups purged after 6 h (from the latest confirmation email) and not searchable | ✅ | 0010/0015, tests 70, 75 |
 | Expiry / purge job (`pg_cron`) | ✅ | Steps isolated (one failure no longer undoes the rest), batched; test 75 forces a failure |
 | Storage-janitor Edge Function | ✅ | `supabase/functions/storage-janitor`; pg_cron → pg_net → function (0016, Vault secrets); functions.test.mjs |
-| media-url Edge Function (signing) | ✅ | ≤ 60 s URLs, Snap URLs bound to the viewing session; functions.test.mjs + e2e |
+| media-url Edge Function | ✅ | Streams one copy per authorisation (no reusable URLs), no-store, Snap bytes only in a live session for current members; functions.test.mjs + e2e |
 | Realtime: postgres_changes under RLS | ✅ | e2e; every subscription filtered to the user; DELETE events no longer published (they bypass RLS) |
 | Realtime: private broadcast topic authorisation | ✅ | e2e typing indicator; tests 60, 75 (policies on realtime.messages), 90 |
 | Error monitoring / logging | 🟠 | Error boundary + Supabase logs; no client error table yet |

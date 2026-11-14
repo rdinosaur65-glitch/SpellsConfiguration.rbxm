@@ -2,11 +2,11 @@
 //
 // 1. Authorise with the CALLER's JWT: authorize_media_access(asset) or, for a Snap,
 //    authorize_snap_media(snap, session). Those RPCs check membership, friendship,
-//    blocks, account state, 2FA, rate limits and the egress budget, and say how long
-//    the URL may live (≤ 60 s; for a Snap, never past the viewing session).
-// 2. Sign with the service role for exactly that long.
-// The response carries a path relative to the project URL; the app prefixes its own
-// Supabase URL (inside the platform the function sees an internal hostname).
+//    blocks, account state, 2FA, rate limits and the egress budget, and charge the
+//    caller's daily share for exactly one download.
+// 2. Stream that one copy back from Storage (read with the service role).
+// No URL is ever handed out, so nothing can be re-downloaded or shared, and the
+// response is marked no-store so browsers and proxies do not keep it on disk.
 import { CORS, SERVICE_KEY, SUPABASE_URL, UUID, json, rpc } from '../_shared/http.ts';
 
 interface Grant { bucket: string; object_path: string; mime_type: string; valid_seconds: number }
@@ -41,15 +41,21 @@ Deno.serve(async (req) => {
   const g = grant.data[0];
   if (!g) return json(404, { error: 'media_not_found' });
 
-  const seconds = Math.max(1, Math.min(60, Math.floor(g.valid_seconds)));
   const path = g.object_path.split('/').map(encodeURIComponent).join('/');
-  const signed = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/${encodeURIComponent(g.bucket)}/${path}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expiresIn: seconds }),
+  const obj = await fetch(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(g.bucket)}/${path}`, {
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
   });
-  if (!signed.ok) return json(502, { error: 'signing_failed' });
-  const { signedURL } = await signed.json() as { signedURL?: string };
-  if (!signedURL) return json(502, { error: 'signing_failed' });
-  return json(200, { path: `/storage/v1${signedURL}`, mime_type: g.mime_type, expires_in: seconds });
+  if (!obj.ok || !obj.body) return json(obj.status === 404 ? 404 : 502, { error: obj.status === 404 ? 'media_not_found' : 'storage_unavailable' });
+
+  const headers: Record<string, string> = {
+    ...CORS,
+    'Content-Type': g.mime_type,
+    'Cache-Control': 'no-store, private, max-age=0',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Disposition': 'inline',
+    'Access-Control-Expose-Headers': 'Content-Type, Content-Length',
+  };
+  const len = obj.headers.get('Content-Length');
+  if (len) headers['Content-Length'] = len;
+  return new Response(obj.body, { status: 200, headers });
 });

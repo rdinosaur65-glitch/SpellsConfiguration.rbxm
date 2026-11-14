@@ -6,6 +6,7 @@
 #     callers get its id.
 #  4. Two group members read at the same moment -> the disappearing message still starts
 #     expiring (neither reader may miss the other's read).
+#  5. A read races a member leaving -> the same guarantee.
 set -uo pipefail
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -99,3 +100,26 @@ wait $P1 $P2
 expiring=$("${PSQL[@]}" "${DB[@]}" -At -c "select expires_at is not null from public.messages where id = '$GMSG'")
 echo "  concurrent group reads: expiry started=$expiring"
 [ "$expiring" = "t" ] || { cat $TMP/race4a $TMP/race4b; exit 1; }
+
+# --- 5. a read races a member leaving -> the disappearing message still starts expiring
+g5=$("${PSQL[@]}" "${DB[@]}" -At -f "$ROOT/supabase/tests/helpers.sql" -f - 2>&1 <<SQL | grep -E '^G5|ERROR' | tail -1
+create temp table g5 as select test.new_user('race_d_' || floor(random()*1e6)::int) d;
+select test.befriend('$SENDER', d) from g5;
+alter table g5 add column conv uuid, add column msg uuid;
+grant all on g5 to authenticated;
+select test.as_user('$SENDER');
+update g5 set conv = public.create_group('race5', array['$RECIP'::uuid, d]);
+update g5 set msg = public.send_message(conv, 'text', 'read while d leaves', gen_random_uuid());
+select 'G5 ' || conv || ' ' || msg || ' ' || d from g5;
+SQL
+)
+g5="${g5#G5 }"
+read -r G5CONV G5MSG LEAVER <<< "$g5"
+if [ -z "${LEAVER:-}" ]; then echo "race 5 setup failed: $g5"; exit 1; fi
+"${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$RECIP")" -c "begin; select 'READ ' || public.mark_conversation_read('$G5CONV'); select pg_sleep(1); commit;" > $TMP/race5a 2>&1 & P1=$!
+sleep 0.3
+"${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$LEAVER")" -c "begin; select public.leave_group('$G5CONV'); commit;" > $TMP/race5b 2>&1 & P2=$!
+wait $P1 $P2
+expiring=$("${PSQL[@]}" "${DB[@]}" -At -c "select expires_at is not null from public.messages where id = '$G5MSG'")
+echo "  read vs leave race: expiry started=$expiring"
+[ "$expiring" = "t" ] || { cat $TMP/race5a $TMP/race5b; exit 1; }

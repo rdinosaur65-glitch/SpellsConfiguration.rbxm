@@ -1,8 +1,8 @@
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { LIMITS, sha256Hex, validateMedia, type MediaPurpose } from '@pulse/domain';
 import { rpc, supabase } from './supabase';
 
 const PROJECT_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '';
+const ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '';
 
 /**
  * Re-encode a photo as JPEG at most `maxDim` px on its longest side. Besides saving
@@ -62,35 +62,42 @@ export async function uploadMedia(blob: Blob, purpose: MediaPurpose): Promise<st
 
 export type MediaRequest = { asset_id: string } | { snap_id: string; session_id: string };
 
-/** Ask the media-url Edge Function for a short-lived signed URL. */
-export async function signedMediaUrl(req: MediaRequest): Promise<{ url: string; mime_type: string; expires_in: number }> {
-  const { data, error } = await supabase.functions.invoke('media-url', { body: req });
-  if (error) {
+/**
+ * One authorised download from the media-url Edge Function. The function streams the
+ * bytes itself (no reusable URL exists) and marks them no-store; the request is also
+ * made with cache: 'no-store' so nothing is written to the browser's disk cache.
+ */
+export async function fetchMedia(req: MediaRequest): Promise<Blob> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error('not_authenticated');
+  let res: Response;
+  try {
+    res = await fetch(`${PROJECT_URL}/functions/v1/media-url`, {
+      method: 'POST', cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer',
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+  } catch { throw new Error('Failed to fetch'); }
+  if (!res.ok) {
     let code = 'media_not_found';
-    if (error instanceof FunctionsHttpError) {
-      try { code = ((await error.context.json()) as { error?: string }).error ?? code; } catch { /* keep default */ }
-    } else if (/fetch|network/i.test(error.message)) code = 'Failed to fetch';
+    try { code = ((await res.json()) as { error?: string }).error ?? code; } catch { /* keep default */ }
+    if (code === 'mfa_required') window.dispatchEvent(new Event('pulse:mfa-required'));
     throw new Error(code);
   }
-  const d = data as { path: string; mime_type: string; expires_in: number };
-  return { url: PROJECT_URL + d.path, mime_type: d.mime_type, expires_in: d.expires_in };
+  return res.blob();
 }
 
 /**
- * Bytes are fetched once per app session and kept as an in-memory blob URL (never
+ * Chat photos are fetched once per app session and kept as an in-memory blob URL (never
  * written to device storage), so scrolling or re-rendering does not spend the egress
- * budget again. Released on sign-out (page reload) or via releaseMedia().
+ * budget again. Released on sign-out via releaseAllMedia().
  */
 const blobCache = new Map<string, Promise<string>>();
 export function chatMediaObjectUrl(assetId: string): Promise<string> {
   let p = blobCache.get(assetId);
   if (!p) {
-    p = (async () => {
-      const { url } = await signedMediaUrl({ asset_id: assetId });
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('media_not_found');
-      return URL.createObjectURL(await res.blob());
-    })();
+    p = fetchMedia({ asset_id: assetId }).then((b) => URL.createObjectURL(b));
     p.catch(() => blobCache.delete(assetId));
     blobCache.set(assetId, p);
   }
@@ -99,10 +106,7 @@ export function chatMediaObjectUrl(assetId: string): Promise<string> {
 
 /** Snap bytes are never cached: fetched for one viewing session, then released. */
 export async function snapObjectUrl(snapId: string, sessionId: string): Promise<string> {
-  const { url } = await signedMediaUrl({ snap_id: snapId, session_id: sessionId });
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('snap_expired');
-  return URL.createObjectURL(await res.blob());
+  return URL.createObjectURL(await fetchMedia({ snap_id: snapId, session_id: sessionId }));
 }
 
 export function releaseAllMedia() {

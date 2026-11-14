@@ -37,9 +37,10 @@ pulse/
   supabase/
     migrations/              Ordered SQL migrations (source of truth for schema + RLS)
     tests/                   Supabase shim for local Postgres + SQL test suites
-    functions/               Edge Functions (Deno) — Phase 2+
+    functions/               Edge Functions (Deno) — next phase
+    config.toml              Local Supabase settings (mirrors the hosted Auth settings)
   packages/domain/           Pure TypeScript rules shared by UI and Edge Functions (+ tests)
-  apps/web/                  Vite React PWA — Phase 1 UI (blocked on dependency install here)
+  apps/web/                  Vite React PWA (screens, design system, e2e tests in apps/web/e2e)
   scripts/                   Local test runners
 ```
 

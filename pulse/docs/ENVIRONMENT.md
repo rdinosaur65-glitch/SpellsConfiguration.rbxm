@@ -32,7 +32,15 @@ update private.platform_config set registration_cap = 50,
   memories_quota_bytes = 52428800, daily_egress_budget_bytes = 167772160;
 ```
 
-## Supabase Auth settings (dashboard)
+## Supabase Auth settings (dashboard) — mirror `supabase/config.toml`
+- Email confirmations **on**; minimum password length 8, "letters and digits" required.
+- Secure password change **on**.
+- MFA → TOTP (App Authenticator) **enabled** (free on all plans; phone MFA is a paid add-on — leave off).
+- Email notifications **on** for: password changed, email changed, MFA factor enrolled/removed
+  (template: `supabase/templates/security_alert.html`).
+- Redirect URLs: your `*.pages.dev` address (`/**`) and `/reset-password`.
+
+### Other dashboard notes
 - Enable email confirmations; set Site URL to the `*.pages.dev` address.
 - Leave Apple/Google providers **disabled** until their credentials exist
   (Apple requires a paid developer account → not available at €0).
@@ -44,3 +52,8 @@ update private.platform_config set registration_cap = 50,
 |---|---|---|
 | `PGBIN` | `/usr/lib/postgresql/16/bin` | Postgres binaries for `scripts/test-db.sh` |
 | `PULSE_PG_PORT` | `54329` | Port of the throwaway test cluster |
+
+## Local development (free)
+`npm run sb:start` runs Supabase in Docker with the settings from `supabase/config.toml`.
+`npx supabase status` prints the local URL and anon key (public demo values, local only).
+Emails (confirmation, reset, security alerts) are captured at http://127.0.0.1:54324.

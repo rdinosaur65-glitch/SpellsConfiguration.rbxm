@@ -19,6 +19,19 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+// Non-sensitive copy of the user's own profile + settings for the offline shell only.
+// Never chats, friends or media. Cleared on sign-out.
+const CACHE_KEY = 'pulse.me.v1';
+interface Cached { uid: string; profile: Profile; settings: UserSettings }
+function readCache(uid: string): Cached | null {
+  try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as Cached | null; return c?.uid === uid ? c : null; }
+  catch { return null; }
+}
+function writeCache(uid: string, v: Omit<Cached, 'uid'>) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ uid, ...v })); } catch { /* storage unavailable */ }
+}
+function clearCache() { try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ } }
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -30,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const load = useCallback(async (s: Session | null) => {
     if (!s) {
       setProfile(null); setSettings(null); setIsOwner(false);
+      clearCache();
       return;
     }
     const uid = s.user.id;
@@ -38,9 +52,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.from('user_settings').select('*').eq('user_id', uid).maybeSingle(),
       rpc<boolean>('am_i_owner').catch(() => false),
     ]);
-    setProfile((p.data as Profile | null) ?? null);
-    setSettings((st.data as UserSettings | null) ?? null);
-    setIsOwner(Boolean(owner));
+    if (p.error || st.error) {
+      // Offline (or transient failure): fall back to the last copy so the shell still opens.
+      const cached = readCache(uid);
+      if (cached) { setProfile(cached.profile); setSettings(cached.settings); }
+      return;
+    }
+    const profile = (p.data as Profile | null) ?? null;
+    const settings = (st.data as UserSettings | null) ?? null;
+    setProfile(profile); setSettings(settings); setIsOwner(Boolean(owner));
+    if (profile && settings) writeCache(uid, { profile, settings });
   }, []);
 
   useEffect(() => {
@@ -55,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'PASSWORD_RECOVERY') setRecovering(true);
       setSession(s);
       // Defer DB calls out of the auth callback (supabase-js recommendation).
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || event === 'MFA_CHALLENGE_VERIFIED') {
         setTimeout(() => { void load(s); }, 0);
       }
     });

@@ -13,6 +13,7 @@ const MESSAGES: Record<string, string> = {
   no_profile: 'Your profile could not be found.',
   not_authenticated: 'Please sign in again.',
   reauthentication_required: 'For your safety, sign in again before doing this.',
+  mfa_required: 'Enter your two-step verification code to continue.',
   owner_account_protected: 'The owner account cannot be deleted from the app.',
   // social
   query_too_short: 'Type at least 3 characters.',
@@ -56,11 +57,13 @@ const MESSAGES: Record<string, string> = {
 export function errorMessage(err: unknown): string {
   if (!err) return 'Something went wrong.';
   const e = err as { message?: string; code?: string; error_code?: string };
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'You appear to be offline.';
   for (const key of [e.message, e.code, e.error_code]) {
     if (key && MESSAGES[key]) return MESSAGES[key];
   }
   if (e.message?.startsWith('Password should')) return MESSAGES.weak_password!;
-  if (e.message === 'Failed to fetch' || e.message?.includes('NetworkError')) {
+  if ((typeof navigator !== 'undefined' && navigator.onLine === false)
+      || /Failed to fetch|NetworkError|Load failed|fetch failed/i.test(e.message ?? '')) {
     return 'You appear to be offline.';
   }
   return 'Something went wrong. Please try again.';

@@ -30,7 +30,15 @@ begin
   where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
   perform test.ok(bad is null, 'RLS on every public table; missing: ' || coalesce(bad, ''));
 
-  -- 5. Search works end-to-end for a signed-in user.
+  -- 5. Every RLS table in public carries the restrictive 2FA gate (migration 0013).
+  select string_agg(c.relname, ', ') into bad
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r'
+    and not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname
+                    and p.policyname = 'mfa_gate' and p.permissive = 'RESTRICTIVE');
+  perform test.ok(bad is null, 'mfa_gate on every table; missing: ' || coalesce(bad, ''));
+
+  -- 6. Search works end-to-end for a signed-in user.
   u := test.new_user('rq_80a'); v := test.new_user('rq_80b');
   perform test.as_user(u);
   perform test.ok((select count(*) from public.search_users('rq_80')) = 1, 'search finds the other user');

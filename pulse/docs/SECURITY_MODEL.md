@@ -9,6 +9,13 @@
   storage deletion and push delivery. Each calls an authorisation RPC *with the
   caller's JWT* before using service-role powers.
 
+## Two-step verification (migration 0013)
+Once a user has a *verified* TOTP factor, the database requires an `aal2` session
+(password + code) everywhere: `assert_active()`/`assert_owner()` (nearly every RPC), the
+RPCs that check `auth.uid()` directly, a restrictive `mfa_gate` policy on every public
+table and on the media bucket, and Realtime topic authorisation. A password alone yields
+`aal1` and is refused with `mfa_required`. Test 80 fails if a new table lacks the gate.
+
 ## Function surface
 - Every function is closed to `PUBLIC`/`anon` by `20261114000900_privileges.sql`, then
   the RPC list is granted to `authenticated` explicitly. Janitor functions are
@@ -16,6 +23,12 @@
 - Helpers that answer relationship questions (`are_friends`, `is_blocked_either`,
   `is_member`, `is_owner`) live in the non-exposed `private` schema so they cannot be
   used to probe other users' relationships through the API.
+
+## Client-side data
+The browser keeps the Supabase session (localStorage, managed by supabase-js) and a copy
+of the user's **own** profile and settings so the offline shell can open. No chats,
+friends or media are cached by the app; the service worker precaches only static assets
+and never caches API, Auth or Storage responses. Both are cleared on sign-out.
 
 ## Abuse controls
 - Per-user fixed-window rate limits on search, requests, messages, uploads, reports, Snap opens.

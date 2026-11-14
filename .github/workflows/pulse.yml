@@ -1,0 +1,59 @@
+# PULSE CI on GitHub Actions' free tier (public repos: free; private repos: within the
+# free monthly minutes — no billing is ever set up by this workflow).
+name: pulse
+on:
+  push:
+    paths: ['pulse/**', '.github/workflows/pulse.yml']
+  pull_request:
+    paths: ['pulse/**', '.github/workflows/pulse.yml']
+permissions:
+  contents: read
+concurrency:
+  group: pulse-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    working-directory: pulse
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: pulse/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck -w @pulse/domain
+      - run: npm test -w @pulse/domain
+      - run: npm run build -w @pulse/web
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_ANON_KEY: ci-placeholder
+      - name: SQL suites on plain Postgres 16 (Supabase shim)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq postgresql-16
+          sudo systemctl stop postgresql || true
+          scripts/test-db.sh
+
+  supabase-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: pulse/package-lock.json }
+      - run: npm ci
+      - run: npm run sb:start
+      - name: SQL suites on the real local Supabase stack
+        run: scripts/test-supabase-local.sh
+      - run: npx playwright install --with-deps chromium
+        working-directory: pulse/apps/web
+      - name: Playwright end-to-end
+        working-directory: pulse/apps/web
+        run: |
+          printf 'VITE_SUPABASE_URL=http://127.0.0.1:54321\nVITE_SUPABASE_ANON_KEY=%s\n' \
+            "$(npx supabase status -o env | sed -n 's/^ANON_KEY="\(.*\)"$/\1/p')" > .env.local
+          npx playwright test --trace off
+      - if: always()
+        run: npm run sb:stop

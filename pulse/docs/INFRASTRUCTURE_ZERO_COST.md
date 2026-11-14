@@ -129,3 +129,21 @@ app tells users plainly when a limit is reached.
 | Cloud voice transcription | **Not enabled** | Only on-device options; Chrome's Web Speech API sends audio to Google, so it would need explicit consent |
 | Always-on availability | **Not guaranteed** | Free projects pause after 7 idle days; restriction possible if quota is exceeded |
 | Backups / point-in-time recovery | **Not provided by the Free plan** | Owner can run `pg_dump` manually (documented in deployment guide) |
+| Auth emails to real users via Supabase's built-in mailer | **Not possible** → free SMTP provider needed | See §7 |
+
+## 7. Email delivery (added in report 2)
+
+Found while building sign-up: Supabase's built-in email service only delivers to
+addresses on the project's **team**, is best-effort, and is capped at a few emails per
+hour ([Supabase: custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)). Email
+confirmation, password reset and security alerts therefore need a custom SMTP server.
+
+€0 option: a free transactional-email tier that needs no payment card, connected in
+Supabase → Authentication → SMTP. Brevo documents this integration
+([Brevo + Supabase](https://developers.brevo.com/docs/supabase-smtp-integration)); its free
+plan has a daily sending cap that fits a small friends-only community. **Verify the free
+plan's current terms and that no card is requested at signup; stop if one is.** After
+connecting SMTP, keep Supabase's Auth email rate limit low (e.g. 30/hour) so a signup
+flood cannot exhaust the provider's daily cap.
+
+Until SMTP is connected, only team members can sign up (fine for the owner's first tests).

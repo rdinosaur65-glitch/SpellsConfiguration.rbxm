@@ -178,7 +178,8 @@ export function Chat() {
     if (e.key === 'Escape') { setEditing(null); setReplyTo(null); }
   }
 
-  const title = conv?.kind === 'group' ? (conv.name ?? 'Group') : nameOf(people.find((p) => p.user_id !== me)?.user_id ?? '');
+  const other = people.find((p) => p.user_id !== me);
+  const title = !conv ? '' : conv.kind === 'group' ? (conv.name ?? 'Group') : other ? nameOf(other.user_id) : 'Chat';
   const typers = Object.keys(typing).map(nameOf);
   const byId = useMemo(() => new Map((messages ?? []).map((m) => [m.id, m])), [messages]);
 

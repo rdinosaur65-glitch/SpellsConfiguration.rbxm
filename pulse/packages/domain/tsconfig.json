@@ -7,10 +7,17 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "noUncheckedIndexedAccess": true,
-    "lib": ["ES2023", "DOM"],
-    "types": ["node"],
-    "typeRoots": ["/opt/npm-tools/node_modules/@types"],
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
     "skipLibCheck": true
   },
-  "include": ["src", "test"]
+  "include": [
+    "src",
+    "test"
+  ]
 }

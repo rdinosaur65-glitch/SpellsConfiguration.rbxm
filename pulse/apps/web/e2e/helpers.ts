@@ -1,8 +1,16 @@
+import { execFileSync } from 'node:child_process';
 import { expect, type Page } from '@playwright/test';
 import { totp } from './totp';
 
 const MAILPIT = process.env.MAILPIT_URL ?? 'http://127.0.0.1:54324';
 export const PASSWORD = 'pulse-test-123';
+const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+const psql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
+
+/** A fresh invitation code, as the owner would create it (registration is invite-only). */
+export function newInvite(validFor = "interval '1 day'"): string {
+  return psql(`insert into private.invitations (code, expires_at) values (private.new_invite_code(), now() + ${validFor}) returning code`);
+}
 
 export function uniq(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`.slice(0, 20);
@@ -49,7 +57,8 @@ export async function hasEmail(to: string, subject: RegExp): Promise<boolean> {
 /** Full sign-up through the UI, including the emailed confirmation link. Ends signed in. */
 export async function signUp(page: Page, username: string, displayName: string): Promise<string> {
   const email = `${username}@example.test`;
-  await page.goto('/signup');
+  await page.goto(`/signup?invite=${newInvite()}`);
+  await expect(page.getByText('Invitation accepted ✓')).toBeVisible();
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Username').fill(username);
   await page.getByLabel('Display name (optional)').fill(displayName);

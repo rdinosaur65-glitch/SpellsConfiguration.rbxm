@@ -21,7 +21,8 @@ begin
   select string_agg(p.proname, ', ') into bad
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')
-    and p.proname not like 'pg\_%';
+    and p.proname not like 'pg\_%'
+    and p.proname <> 'registration_status';     -- the sign-up screen (signed out), 0031
   perform test.ok(bad is null, 'no public function executable by anon; offenders: ' || coalesce(bad, ''));
 
   -- 4. Every table in public has RLS enabled.
@@ -64,7 +65,8 @@ begin
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.prosecdef
     and has_function_privilege('authenticated', p.oid, 'execute')
-    and p.prosrc !~ '(assert_active|assert_mfa|assert_owner|mfa_satisfied)\(';
+    and p.prosrc !~ '(assert_active|assert_mfa|assert_owner|mfa_satisfied)\('
+    and p.proname <> 'registration_status';     -- meant for signed-out callers; reveals no account data
   perform test.ok(bad is null, 'definer RPCs check the caller; offenders: ' || coalesce(bad, ''));
 
   -- 9. Every foreign key with an ON DELETE action has an index on its columns, so

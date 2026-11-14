@@ -72,9 +72,11 @@ end $$;
 do $$
 declare n integer := (select count(*) from public.profiles);
 begin
-  update private.platform_config set registration_cap = n;
-  perform test.throws($q$select test.new_user('overflow_10')$q$, 'registration_closed', 'cap enforced');
-  update private.platform_config set registration_cap = 1000;
+  -- The cap applies to public registration (0031); invitations are not capped.
+  update private.platform_config set registration_mode = 'public', registration_cap = n;
+  perform test.throws($q$insert into auth.users (id, email, raw_user_meta_data) values
+    (gen_random_uuid(), 'overflow_10@test.local', '{"username": "overflow_10"}')$q$, 'registration_closed', 'cap enforced');
+  update private.platform_config set registration_mode = 'invite_only', registration_cap = 1000;
 end $$;
 
 -- Settings are private to their owner.

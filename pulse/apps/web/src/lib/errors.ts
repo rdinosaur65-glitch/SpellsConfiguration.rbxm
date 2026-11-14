@@ -9,6 +9,13 @@ const MESSAGES: Record<string, string> = {
   username_taken: 'That username is taken.',
   username_cooldown: 'You can change your username once every 48 hours.',
   registration_closed: 'PULSE is full right now (free-tier capacity). Please try again later.',
+  invite_required: 'PULSE is invite-only. You need an invitation from the PULSE owner to join.',
+  invite_invalid: 'That invitation can’t be used. It may have been used already, expired or been revoked — ask the PULSE owner for a new one.',
+  invalid_expiry: 'Choose an expiry between 1 hour and 30 days.',
+  note_too_long: 'Keep the note to 60 characters or fewer.',
+  invitation_not_pending: 'Only invitations that are still waiting to be used can be revoked.',
+  invalid_mode: 'Unknown registration setting.',
+  invalid_cap: 'The account limit must be between 1 and 10,000.',
   account_not_active: 'This account is not active.',
   no_profile: 'Your profile could not be found.',
   not_authenticated: 'Please sign in again.',
@@ -71,7 +78,7 @@ const MESSAGES: Record<string, string> = {
   weak_password: 'Choose a stronger password (at least 8 characters with letters and numbers).',
   same_password: 'The new password must be different.',
   // GoTrue sometimes hides the signup trigger's code behind this generic message.
-  'Database error saving new user': 'We couldn’t create that account. The username may be taken, or PULSE may be full right now.',
+  'Database error saving new user': 'We couldn’t create that account. The username may be taken, or the invitation can no longer be used.',
 };
 
 export function errorMessage(err: unknown): string {

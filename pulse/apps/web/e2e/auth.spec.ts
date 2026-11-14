@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { PASSWORD, hasEmail, linkFromEmail, signIn, signUp, uniq } from './helpers';
+import { PASSWORD, hasEmail, linkFromEmail, newInvite, signIn, signUp, uniq } from './helpers';
 
 test('sign-up requires email confirmation, then signs in', async ({ page }) => {
   const username = uniq('ann_');
   const email = `${username}@example.test`;
   // Before confirming, sign-in is refused.
-  await page.goto('/signup');
+  await page.goto(`/signup?invite=${newInvite()}`);
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Username').fill(username);
   await page.getByLabel('Password').fill(PASSWORD);
@@ -26,7 +26,7 @@ test('username rules are checked client-side and server-side', async ({ page }) 
   await page.getByRole('link', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
 
-  await page.goto('/signup');
+  await page.goto(`/signup?invite=${newInvite()}`);
   await page.getByLabel('Username').fill('ab');
   await page.getByLabel('Username').blur();
   await expect(page.getByText(/Usernames are 3–20 characters/)).toBeVisible();

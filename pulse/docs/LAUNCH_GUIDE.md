@@ -142,15 +142,17 @@ frame), and `Permissions-Policy` is not available (the browser still asks before
 microphone or location use). The page carries `noindex`. The address shows the GitHub
 username.
 
-## 7. Become the owner
-1. Open the app, sign up with your own account and confirm the email.
-2. Supabase → Table editor → `profiles` → copy your `id`. In the SQL Editor:
-   ```sql
-   update private.platform_config set owner_user_id = '<your id>';
-   ```
+## 7. Become the owner (no invitation needed, nobody else can)
+1. With your Management API token (the same one used for the migrations):
+   `SUPABASE_ACCESS_TOKEN=<token> node scripts/bootstrap-owner.mjs <project-ref> <your email> <username> <site URL>`
+   It only works while the project has no owner. It stores a hash of a one-time token with
+   your address, creates your account unconfirmed (no invitation needed for that one
+   address + token), and Supabase emails you a "Reset your password" link.
+2. Open the link and choose your password. Opening it proves the inbox; only then does the
+   database make the account the owner (and close the bootstrap for good).
 3. In the app: Settings → **turn on two-step verification**. This is required: the Owner
-   panel (usage meters, reports, suspensions, 2FA resets, app errors, audit log) only works in a
-   session confirmed with your own authenticator code.
+   panel (invitations, registration, usage meters, reports, suspensions, 2FA resets, app
+   errors, audit log) only works in a session confirmed with your own authenticator code.
 4. Read Settings → Privacy and rules once; adjust the wording in
    `apps/web/src/screens/Privacy.tsx` if you want, and redeploy.
 
@@ -165,14 +167,19 @@ With a second email address (or a friend):
 - [ ] Settings → Notifications on (on iPhone: from the Home Screen app); a message from the
       other account shows a notification "<name> · New Chat" while PULSE is closed.
 
-## 9. Invite friends — and keep it friends-only
-Anyone who has the app's address can sign up; PULSE has no invite codes. Keep the beta
-closed with two free settings:
-1. Set the account cap to the number of people you are inviting (you included):
-   `update private.platform_config set registration_cap = <n>;` (default 50).
-2. Once everyone has joined, Supabase → Authentication → Sign In / Providers → turn off
-   **Allow new users to sign up**. Existing accounts keep signing in normally. Turn it on
-   briefly when you want to add someone.
+## 9. Invite friends — invite-only by default
+PULSE is **invite-only**: the database refuses every new account without a valid,
+unused invitation, however the sign-up arrives (the app, Supabase Auth directly, even the
+admin API). So Supabase's own **Allow new users to sign up** switch can stay on.
+1. Owner panel → **Invitations** → choose how long it stays valid (1 day to 30 days),
+   optionally a note only you see ("Sam") → **Create invitation**.
+2. Send the link (Share / Copy link) to that one person. It works once. The panel lists
+   invitations as Pending (with the code), Redeemed (who joined, and whether they still
+   have to confirm their email), Expired and Revoked; **Revoke** stops a pending link at once.
+3. A sign-up that is never confirmed is removed after 6 hours and its invitation becomes
+   usable again (if it has not expired).
+4. Owner panel → **Registration** switches to **Public registration** (anyone with the
+   address, up to an account limit you set) and back. Invitations are never capped.
 
 Share the app address only with the people you invite. On phones, "Add to Home Screen"
 installs it like an app.

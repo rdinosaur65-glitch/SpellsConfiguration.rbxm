@@ -9,6 +9,7 @@ import type { AccountState } from '../lib/types';
 import { Banner, Button, Header, Icon, Spinner, useToast } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { ResetMfaSheet } from '../components/ResetMfa';
+import { InvitationsCard, RegistrationCard } from '../components/Invitations';
 
 /**
  * Owner panel. Everything here goes through admin_* RPCs that re-check ownership (and
@@ -16,7 +17,7 @@ import { ResetMfaSheet } from '../components/ResetMfa';
  * Memories or locations from here — reports carry only the snapshot the reporter saw.
  */
 type Usage = {
-  accounts: number; registration_cap: number; active_7d: number; messages_total: number; open_reports: number;
+  accounts: number; registration_cap: number; registration_mode: 'invite_only' | 'public'; pending_invitations: number; active_7d: number; messages_total: number; open_reports: number;
   storage_pools: Record<string, { used: number; limit: number; percent: number }>;
   egress_today: number; egress_budget_daily: number; database_bytes: number; database_limit: number; pending_deletions: number;
 };
@@ -108,7 +109,9 @@ export function Admin() {
       <Card title="Free-tier usage">
         {!usage ? <Spinner small /> : (
           <div className="stack" data-testid="usage">
-            <Meter label="Accounts" used={usage.accounts} limit={usage.registration_cap} fmt={(n) => String(n)} />
+            {usage.registration_mode === 'public'
+              ? <Meter label="Accounts (public registration limit)" used={usage.accounts} limit={usage.registration_cap} fmt={(n) => String(n)} />
+              : <span className="small">Accounts: <strong>{usage.accounts}</strong> · invite only · {usage.pending_invitations} invitation{usage.pending_invitations === 1 ? '' : 's'} pending</span>}
             <Meter label="Database" used={usage.database_bytes} limit={usage.database_limit} />
             {Object.entries(usage.storage_pools).map(([pool, p]) => <Meter key={pool} label={`Storage · ${pool}`} used={p.used} limit={p.limit} />)}
             <Meter label="Media downloads today" used={usage.egress_today} limit={usage.egress_budget_daily} />
@@ -116,6 +119,10 @@ export function Admin() {
           </div>
         )}
       </Card>
+
+      {usage && <InvitationsCard onToast={showToast} onChange={() => void load()} />}
+      {usage && <RegistrationCard mode={usage.registration_mode} cap={usage.registration_cap} accounts={usage.accounts}
+        onToast={showToast} onChange={() => void load()} />}
 
       <h2 className="section-title">Reports{usage ? ` · ${usage.open_reports} open` : ''}</h2>
       <div className="chips" role="toolbar" aria-label="Report status">

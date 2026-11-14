@@ -8,7 +8,9 @@ account + app password), GitHub Pages (public repository). Nothing is public yet
   without signing in; cron jobs for maintenance, unconfirmed-account purge, push sweep and
   storage clean-up; private `media` bucket (50 MB limit); registration cap 50; no owner yet;
   0 users.
-- Sign-up is **closed** (`disable_signup`) until go-live. Email confirmation is required;
+- Sign-up is **closed** (`disable_signup`) until go-live. Registration is **invite-only**
+  (migration 0031): at go-live Supabase's sign-up switch is turned on and the database
+  refuses every account without a valid invitation. Email confirmation is required;
   passwords ≥ 8 with letters and digits; password change needs a recent sign-in.
 - Edge Functions `media-url`, `storage-janitor`, `owner-mfa-reset`, `push-send` deployed;
   secrets set (values never stored in the repository).
@@ -65,11 +67,21 @@ its templates); the Edge Function emails include a plain-text part.
   clickjacking guard, `noindex`. Checked in Chromium: routes, deep links, icons, service
   worker scope, no CSP errors, hidden when framed.
 
+## Invite-only registration (live, verified)
+On the live project, without opening sign-ups: the gate triggers are installed; mode is
+invite-only; an account without an invitation or with a made-up code is refused even
+through the admin API; a real invitation works once (a second account with it is
+refused); the code is not kept on the account; signed-out callers can check a code but
+not list or create invitations, and the table is not exposed. The owner bootstrap script
+ran for real with a test address: token used once and not kept, ownership granted only
+after the emailed link was opened; then undone (0 users, no owner).
+
 ## Go-live steps (only after the owner's explicit approval)
 1. Commit the Pages build to `docs/` and push.
 2. Owner: GitHub → Settings → Pages → Deploy from a branch → this branch, `/docs` → Save.
-3. Open sign-ups, set the registration cap to the head count.
-4. Owner signs up with their own address, confirms the email; set `owner_user_id`; owner
-   turns on 2FA.
+3. `scripts/bootstrap-owner.mjs` for the owner's address; the owner opens the email,
+   sets a password, turns on 2FA.
+4. Turn Supabase's sign-up switch on (`disable_signup = false`): safe, the database still
+   requires an invitation.
 5. Smoke test on iPhone (Safari → Share → Add to Home Screen; notifications need iOS 16.4+
-   and the home-screen app). Then friends sign up; close sign-ups when everyone is in.
+   and the home-screen app). Then the owner sends invitations from the Owner panel.

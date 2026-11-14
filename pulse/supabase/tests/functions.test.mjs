@@ -40,12 +40,15 @@ const rpc = async (token, fn, args) => {
   return r.data;
 };
 
+const newInvite = () => sql(`insert into private.invitations (code, expires_at) values (private.new_invite_code(), now() + interval '1 day') returning code`);
+
 async function newUser(tag) {
   const username = `${tag}${Date.now().toString(36)}${Math.floor(Math.random() * 1e3)}`.slice(0, 20);
   const email = `${username}@example.test`;
   const created = await call('/auth/v1/admin/users', {
     token: SERVICE, headers: { apikey: SERVICE },
-    body: { email, password: 'pulse-test-123', email_confirm: true, user_metadata: { username } },
+    // Registration is invite-only (0031): every account, even an admin-created one, needs an invitation.
+    body: { email, password: 'pulse-test-123', email_confirm: true, user_metadata: { username, invite_code: newInvite() } },
   });
   assert.equal(created.status, 200, JSON.stringify(created.data));
   const s = await call('/auth/v1/token?grant_type=password', { body: { email, password: 'pulse-test-123' } });

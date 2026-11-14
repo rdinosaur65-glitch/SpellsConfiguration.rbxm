@@ -128,6 +128,24 @@ immediately, not when its JWT expires. Its own state is readable only through
   kept 14 days, readable only by the owner (with 2FA) in the Owner panel. No message text,
   media or settings are collected; network errors and harmless browser warnings are skipped.
 
+## Registration (migration 0031)
+- Invite-only by default. `private.gate_registration` (BEFORE INSERT on `auth.users`)
+  runs for every way an account can be created (app, `/signup`, `/otp`, `/invite`, admin
+  API) and refuses it unless it carries a valid invitation code, which it redeems in the
+  same statement; a failed sign-up never uses a code up. One registration at a time
+  (advisory lock + row lock): one code cannot create two accounts (tested with 8 parallel
+  sign-ups against the real Auth server).
+- Codes: 12 characters from 32 symbols (60 bits), stored in `private.invitations`
+  (not exposed), readable only by the owner (aal2) while still pending; never written to
+  the audit log; removed from the account's metadata.
+- Anonymous visitors can only ask `registration_status(code)` (mode + whether that code is
+  usable); it never consumes a code. Owner functions: create (1 h–30 days), list, revoke,
+  switch mode (public registration is capped by `registration_cap`; invitations are not).
+- First owner: `scripts/bootstrap-owner.mjs` (database access required) stores the SHA-256
+  of a one-time token with the owner's address; the account created with that token needs
+  no invitation; ownership is granted only when that address is confirmed, once, while no
+  owner exists. A sign-up with the owner's address but no token is an ordinary sign-up.
+
 ## Owner
 - Identified by UUID in `private.platform_config`, never by username.
 - Owner powers need a two-step-verified session (aal2): the owner must turn on 2FA before

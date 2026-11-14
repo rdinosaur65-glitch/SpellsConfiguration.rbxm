@@ -7,14 +7,22 @@ grant usage on schema test to authenticated, anon, service_role;
 update private.platform_config set registration_cap = 1000;
 
 -- Create a user through the real signup trigger. Returns the new id.
+-- A fresh, valid invitation code (as the database would issue it to the owner).
+create or replace function test.new_invite(p_valid interval default interval '1 day')
+returns text language sql as $$
+  insert into private.invitations (code, expires_at) values (private.new_invite_code(), now() + p_valid) returning code
+$$;
+
 create or replace function test.new_user(p_username text, p_display text default null)
 returns uuid language plpgsql as $$
 declare v uuid;
 begin
   -- Real Supabase auth.users.id has no default, so supply one (works with the shim too).
+  -- Registration is invite-only by default (0031): each test user gets its own invitation.
   insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
   values (gen_random_uuid(), p_username || '.' || gen_random_uuid() || '@test.local', now(),
-          jsonb_build_object('username', p_username, 'display_name', coalesce(p_display, p_username)))
+          jsonb_build_object('username', p_username, 'display_name', coalesce(p_display, p_username),
+                             'invite_code', test.new_invite()))
   returning id into v;
   return v;
 end $$;

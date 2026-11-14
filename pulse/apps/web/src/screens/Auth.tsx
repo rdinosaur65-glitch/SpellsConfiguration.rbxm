@@ -1,7 +1,7 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { validateUsername, LIMITS } from '@pulse/domain';
-import { supabase } from '../lib/supabase';
+import { rpc, supabase } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
 import { Banner, Button, Field } from '../components/ui';
 import { useAuth } from '../lib/auth';
@@ -79,7 +79,44 @@ export function SignIn() {
   );
 }
 
+type InviteState = 'pending' | 'redeemed' | 'expired' | 'revoked' | 'invalid' | null;
+interface RegistrationStatus { mode: 'invite_only' | 'public'; invite: InviteState; public_full: boolean }
+const INVITE_PROBLEM: Record<string, string> = {
+  invalid: 'That invitation code doesn’t exist. Check it, or ask the PULSE owner for a new one.',
+  redeemed: 'That invitation has already been used. Ask the PULSE owner for a new one.',
+  expired: 'That invitation has expired. Ask the PULSE owner for a new one.',
+  revoked: 'That invitation was cancelled. Ask the PULSE owner for a new one.',
+};
+/** "abcd efgh-jkmn" → "ABCD-EFGH-JKMN" (O typed for zero is accepted). */
+export function formatInvite(raw: string): string {
+  const c = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/O/g, '0').slice(0, 12);
+  return c.match(/.{1,4}/g)?.join('-') ?? '';
+}
+
+/** Invitation code check (signed out; never uses the code up — only creating the account does,
+ *  and the database decides). */
+function useRegistration(code: string) {
+  const [status, setStatus] = useState<RegistrationStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const complete = code.replace(/-/g, '').length === 12;
+    setChecking(complete);
+    const t = setTimeout(() => {
+      rpc<RegistrationStatus>('registration_status', { p_code: complete ? code : null })
+        .then((r) => { if (alive) setStatus(r); })
+        .catch(() => { if (alive) setStatus((s) => s ?? { mode: 'invite_only', invite: null, public_full: false }); })
+        .finally(() => { if (alive) setChecking(false); });
+    }, complete ? 250 : 0);
+    return () => { alive = false; clearTimeout(t); };
+  }, [code]);
+  return { status, checking };
+}
+
 export function SignUp() {
+  const [params] = useSearchParams();
+  const [invite, setInvite] = useState(() => formatInvite(params.get('invite') ?? ''));
+  const { status: reg, checking } = useRegistration(invite);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -94,7 +131,12 @@ export function SignUp() {
   const u = validateUsername(username);
   const usernameError = touched && username && !u.ok ? errorMessage({ message: u.error }) : null;
   const passwordError = touched && password && !validPassword(password) ? PASSWORD_HINT : null;
-  const canSubmit = email.includes('@') && u.ok && validPassword(password);
+  const inviteOnly = reg?.mode !== 'public';
+  const inviteComplete = invite.replace(/-/g, '').length === 12;
+  const inviteOk = reg?.invite === 'pending';
+  const inviteError = inviteComplete && !checking && reg?.invite && reg.invite !== 'pending' ? INVITE_PROBLEM[reg.invite] : null;
+  const closed = reg?.mode === 'public' && reg.public_full && !inviteOk;
+  const canSubmit = email.includes('@') && u.ok && validPassword(password) && (inviteOnly ? inviteOk : !closed) && !checking;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -105,13 +147,23 @@ export function SignUp() {
       email: email.trim(), password,
       options: {
         emailRedirectTo: redirectTo(),
-        data: { username: u.value, display_name: displayName.trim() || u.value },
+        data: { username: u.value, display_name: displayName.trim() || u.value, ...(inviteComplete ? { invite_code: invite } : {}) },
         captchaToken: captcha ?? undefined,
       },
     });
     setBusy(false);
     setCaptcha(null); setCaptchaKey((k) => k + 1);
-    if (error) { setError(errorMessage(error)); return; }
+    if (error) {
+      // The database refuses the account if the invitation was used up meanwhile; say which.
+      let msg = errorMessage(error);
+      if (inviteComplete) {
+        const now = await rpc<RegistrationStatus>('registration_status', { p_code: invite }).catch(() => null);
+        if (now?.invite && now.invite !== 'pending') msg = INVITE_PROBLEM[now.invite] ?? msg;
+        else if (/Database error/i.test(error.message)) msg = 'We couldn’t create that account. That username may be taken — try another.';
+      }
+      setError(msg);
+      return;
+    }
     // With confirmations on, Supabase returns no session until the link is clicked.
     if (!data.session) setSentTo(email.trim());
   }
@@ -129,9 +181,19 @@ export function SignUp() {
   return (
     <AuthLayout subtitle="Create your account">
       <form className="stack" onSubmit={submit} noValidate>
+        {reg && inviteOnly && !inviteComplete && (
+          <Banner kind="info" testId="invite-only">PULSE is invite-only. Open the invitation link you were sent, or enter its code below.</Banner>
+        )}
+        {closed && <Banner>{errorMessage({ message: 'registration_closed' })}</Banner>}
         {EMAIL_PENDING && <Banner kind="info" testId="email-pending">PULSE email is still being set up, so confirmation
           emails may not arrive yet. The owner will tell you when sign-ups are open.</Banner>}
         {error && <Banner>{error}</Banner>}
+        {(inviteOnly || invite) && (
+          <Field label={inviteOnly ? 'Invitation code' : 'Invitation code (optional)'} name="invite" autoComplete="off" autoCapitalize="characters"
+                 spellCheck={false} maxLength={14} placeholder="XXXX-XXXX-XXXX" value={invite}
+                 onChange={(e) => setInvite(formatInvite(e.target.value))}
+                 hint={inviteOk ? 'Invitation accepted ✓' : checking ? 'Checking…' : 'From your invitation link.'} error={inviteError} />
+        )}
         <Field label="Email" type="email" name="email" autoComplete="email" inputMode="email" required
                value={email} onChange={(e) => setEmail(e.target.value)} />
         <Field label="Username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required

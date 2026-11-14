@@ -69,10 +69,14 @@ export async function encryptPayload(sub: Subscription, plaintext: Uint8Array): 
   return concat(salt, rs, new Uint8Array([asPublic.length]), asPublic, ct);
 }
 
-/** Send one notification. Resolves to the push service's HTTP status (0 on network error). */
+/** Send one notification. Resolves to the push service's HTTP status (0 on network error).
+ *  A subscription that can never work (endpoint not allowed, keys that are not a valid
+ *  P-256 key / 16-byte secret) resolves to 410, so it is removed instead of retried. */
 export async function sendWebPush(sub: Subscription, payload: unknown, v: Vapid, ttlSeconds = 86400): Promise<number> {
-  if (!endpointAllowed(sub.endpoint)) return 0;
-  const body = await encryptPayload(sub, enc.encode(JSON.stringify(payload)));
+  if (!endpointAllowed(sub.endpoint)) return 410;
+  let body: Uint8Array;
+  try { body = await encryptPayload(sub, enc.encode(JSON.stringify(payload))); }
+  catch { return 410; }
   try {
     const res = await fetch(sub.endpoint, {
       method: 'POST',

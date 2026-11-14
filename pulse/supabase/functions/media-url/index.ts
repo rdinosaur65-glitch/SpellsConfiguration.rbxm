@@ -42,9 +42,13 @@ Deno.serve(async (req) => {
   if (!g) return json(404, { error: 'media_not_found' });
 
   const path = g.object_path.split('/').map(encodeURIComponent).join('/');
+  // Time out only while waiting for Storage to answer; the body then streams as long as it needs.
+  const ctl = new AbortController();
+  const wait = setTimeout(() => ctl.abort(), 10_000);
   const obj = await fetch(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(g.bucket)}/${path}`, {
-    headers: serviceHeaders(),
-  });
+    headers: serviceHeaders(), signal: ctl.signal,
+  }).catch(() => null).finally(() => clearTimeout(wait));
+  if (!obj) return json(504, { error: 'storage_unavailable' });
   if (!obj.ok || !obj.body) return json(obj.status === 404 ? 404 : 502, { error: obj.status === 404 ? 'media_not_found' : 'storage_unavailable' });
 
   const headers: Record<string, string> = {

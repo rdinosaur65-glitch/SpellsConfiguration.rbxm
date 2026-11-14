@@ -35,9 +35,15 @@ const header = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64(s
 export async function sendMail(mail: Mail): Promise<void> {
   const c = config();
   if (!/^[^\s@<>]+@[^\s@<>]+$/.test(mail.to)) throw new Error('bad_recipient');
-  const conn = c.tls === 'implicit'
-    ? await Deno.connectTls({ hostname: c.host, port: c.port })
-    : await Deno.connect({ hostname: c.host, port: c.port });
+  // A black-holed mail server must not hang the caller on the system connect timeout.
+  const connecting = c.tls === 'implicit'
+    ? Deno.connectTls({ hostname: c.host, port: c.port })
+    : Deno.connect({ hostname: c.host, port: c.port });
+  let connectTimer: ReturnType<typeof setTimeout> | undefined;
+  const conn = await Promise.race([
+    connecting,
+    new Promise<never>((_, reject) => { connectTimer = setTimeout(() => reject(new Error('smtp_connect_timeout')), 10_000); }),
+  ]).finally(() => clearTimeout(connectTimer));
   const timer = setTimeout(() => { try { conn.close(); } catch { /* closed */ } }, 20_000);
   let buf = '';
   const readReply = async (): Promise<[number, string]> => {

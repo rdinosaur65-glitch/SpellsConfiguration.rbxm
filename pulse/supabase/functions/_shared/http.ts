@@ -35,17 +35,27 @@ export function json(status: number, body: unknown): Response {
  *  or SERVICE_KEY to act as the service role). */
 export async function rpc<T>(fn: string, args: Record<string, unknown>, bearer: string): Promise<
   { ok: true; data: T } | { ok: false; status: number; code: string }> {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers: { ...(bearer === SERVICE_KEY ? serviceHeaders() : { apikey: ANON_KEY, Authorization: `Bearer ${bearer}` }),
-               'Content-Type': 'application/json' },
-    body: JSON.stringify(args),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { ...(bearer === SERVICE_KEY ? serviceHeaders() : { apikey: ANON_KEY, Authorization: `Bearer ${bearer}` }),
+                 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+      signal: AbortSignal.timeout(8_000),      // a stalled call must not outlive the function's own time budget
+    });
+  } catch {
+    return { ok: false, status: 504, code: 'upstream_timeout' };
+  }
   const text = await res.text();
   let body: unknown = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = null; }
   if (!res.ok) {
-    const code = (body as { message?: string } | null)?.message ?? `http_${res.status}`;
+    // Our own error codes (private.fail) are short snake_case words; anything else is an
+    // internal message (SQL, permissions, timeouts) that must not reach the browser.
+    const raw = (body as { message?: string } | null)?.message ?? '';
+    const code = /^[a-z][a-z0-9_]{1,62}$/.test(raw) ? raw : 'internal_error';
+    if (code === 'internal_error') console.error(`rpc ${fn} failed (${res.status}): ${raw.slice(0, 200)}`);
     return { ok: false, status: res.status, code };
   }
   return { ok: true, data: body as T };

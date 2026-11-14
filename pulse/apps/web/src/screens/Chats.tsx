@@ -6,6 +6,8 @@ import { relativeTime } from '../lib/time';
 import type { ChatListItem } from '../lib/types';
 import { Avatar, Banner, Button, Empty, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
 import { useChatList } from '../lib/live';
+import { useAuth } from '../lib/auth';
+import { SearchSheet } from '../components/ChatExtras';
 
 type Folder = 'all' | 'private' | 'groups' | 'unread';
 const FOLDERS: Array<[Folder, string]> = [['all', 'All'], ['private', 'Private'], ['groups', 'Groups'], ['unread', 'Unread']];
@@ -23,6 +25,9 @@ export function Chats() {
   useEffect(() => { void reload(); }, [reload]);
   const [menuFor, setMenuFor] = useState<ChatListItem | null>(null);
   const [creating, setCreating] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const nav = useNavigate();
+  const { profile } = useAuth();
   const [toast, showToast] = useToast();
   const [removing, setRemoving] = useState<string | null>(null);
 
@@ -41,7 +46,8 @@ export function Chats() {
 
   return (
     <div className="screen">
-      <Header title="Chats" right={<button className="icon-btn" aria-label="New group" onClick={() => setCreating(true)}><Icon name="plus" /></button>} />
+      <Header title="Chats" left={<button className="icon-btn" aria-label="Search all chats" onClick={() => setSearching(true)}><Icon name="search" /></button>}
+        right={<button className="icon-btn" aria-label="New group" onClick={() => setCreating(true)}><Icon name="plus" /></button>} />
       <div className="chips" role="toolbar" aria-label="Chat folders">
         {FOLDERS.map(([f, label]) => (
           <button key={f} className="chip" aria-pressed={folder === f} onClick={() => setFolder(f)}>
@@ -97,6 +103,9 @@ export function Chats() {
       {menuFor && <ChatMenu item={menuFor} items={items ?? []} onClose={() => setMenuFor(null)}
         onDone={async (m) => { setMenuFor(null); showToast(m); await reload(); }} onError={showToast} />}
       {creating && <NewGroup onClose={() => setCreating(false)} />}
+      {searching && <SearchSheet title="Search all chats" onClose={() => setSearching(false)}
+        nameOf={(uid, conv) => { const t = (items ?? []).find((c) => c.conversation_id === conv)?.title ?? 'Chat'; return uid === profile?.id ? `You in ${t}` : t; }}
+        onPick={(h) => { setSearching(false); nav(`/chats/${h.conversation_id}?m=${h.message_id}`); }} />}
       {toast}
     </div>
   );

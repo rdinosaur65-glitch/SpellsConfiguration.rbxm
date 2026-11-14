@@ -126,6 +126,18 @@ with the device key; 410 removes a device; nothing after sign-out); e2e `push.sp
 (turn on in Settings → Amy's message arrives encrypted as "Amy · New Chat" without the text →
 the service worker shows it → "New chats" off stops pushes → turning off removes the device).
 
+## 4b2. Reactions, search, photos/links/saved
+- **Reactions:** tap a message → ❤️ 😂 😮 😢 👍 🔥 (one per person; tapping yours again
+  removes it); chips under the message show who reacted; new reactions appear live.
+- **Search:** in a chat (Chat settings → Search in this chat), reaching back into older
+  history and scrolling to the message; across all chats (search icon on Chats), opening the
+  chat at the message; a "Saved only" filter. Disappeared messages are never found.
+- **Photos, links and saved** per chat (Chat settings), photos loading only as they scroll
+  into view (each view counts against the daily download budget; Data saver loads on tap).
+- Also: the chat catches up once more when Realtime confirms database changes are flowing,
+  closing a short window in which a new message or reaction could be missed after opening a
+  chat. Tests: e2e `extras.spec.ts`.
+
 ## 4c. Last review of today's web changes (all verified, all fixed)
 - On iPhone a dropped connection ("Load failed") was treated as a refusal, so the outbox
   discarded the message and let later ones overtake it → network failures are recognised in
@@ -147,7 +159,7 @@ the service worker shows it → "New chats" off stops pushes → turning off rem
 | Domain unit tests | 11/11 |
 | SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 14/14 files (incl. push test 78 and concurrency races 1–8) |
 | SQL + Edge Functions on the real local Supabase stack | 15/15 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email, push-send against a mock push service) |
-| Playwright end-to-end (built PWA + local stack) | 21 passed, 1 skipped (the screenshot capture, by design) |
+| Playwright end-to-end (built PWA + local stack) | 22 passed, 1 skipped (the screenshot capture, by design) |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |
 
 ## 6. Remaining limitations and risks (honest list)
@@ -169,7 +181,7 @@ the service worker shows it → "New chats" off stops pushes → turning off rem
 
 ## 7. Not in this beta (planned)
 Video Snaps, voice notes, Stories, streaks, Memories backup and Vault, calls,
-map/location, reactions/search/gallery UI (the RPCs exist and are tested),
+map/location,
 Google sign-in (needs the owner's free OAuth credentials); Apple sign-in is not possible at €0.
 
 ## 8. Free-tier capacity (Supabase Free, Cloudflare Pages Free, Gmail SMTP)

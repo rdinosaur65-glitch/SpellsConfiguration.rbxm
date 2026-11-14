@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { canEditMessage, LIMITS } from '@pulse/domain';
 import { rpc, supabase } from '../lib/supabase';
@@ -11,6 +11,7 @@ import { ChatImage, SnapViewer } from '../components/Media';
 import { compressImage } from '../lib/media';
 import { deliver as deliverQueued, enqueue, onOutbox, pendingFor, retry as retryQueued } from '../lib/outbox';
 import { useAuth } from '../lib/auth';
+import { GallerySheet, QUICK_REACTIONS, ReactionChips, SearchSheet, useReactions } from '../components/ChatExtras';
 
 type Expiry = 'after_view' | 'after_view_24h' | 'after_view_7d' | 'never';
 const EXPIRY_TEXT: Record<Expiry, string> = {
@@ -46,6 +47,13 @@ export function Chat() {
   const [typing, setTyping] = useState<Record<string, number>>({});
   const [snapStates, setSnapStates] = useState<SnapState[]>([]);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const reactions = useReactions(convId);
+  const reactionsRef = useRef(reactions);
+  reactionsRef.current = reactions;
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, showToast] = useToast();
   const listRef = useRef<HTMLDivElement>(null);
@@ -133,6 +141,7 @@ export function Chat() {
     setPeople(ppl);
     if (initial) setHasOlder(rows.length === PAGE);
     void loadSnaps();
+    void reactionsRef.current.reload();
     setMessages((prev) => {
       const oldest = rows[0]?.created_at ?? '';
       const full = rows.length === PAGE;
@@ -235,10 +244,17 @@ export function Chat() {
           setTyping((t) => { const n = { ...t }; delete n[row.sender_id]; return n; });
         }
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions', filter: `conversation_id=eq.${convId}` },
+        (p) => reactionsRef.current.apply(p.new as { message_id?: string; user_id?: string; emoji?: string }))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'snap_recipients', filter: `conversation_id=eq.${convId}` },
           () => { void loadSnaps(); })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `id=eq.${convId}` }, (p) => {
         setConv((c) => c ? { ...c, expiry_mode: (p.new as { expiry_mode: Expiry }).expiry_mode, name: (p.new as { name: string | null }).name } : c);
+      })
+      // The channel reports SUBSCRIBED a moment before database changes actually start to
+      // flow; catch up once more when Realtime confirms, so nothing in between is missed.
+      .on('system', {}, (p: { extension?: string; status?: string }) => {
+        if (p?.extension === 'postgres_changes' && p?.status === 'ok') void refresh(false).catch(() => {});
       })
       .subscribe((status) => {
         if (status !== 'SUBSCRIBED') return;
@@ -308,6 +324,33 @@ export function Chat() {
     if (atBottom && !stick.current) { stick.current = true; markRead(); }
     stick.current = atBottom;
   }
+
+  function react(messageId: string, emoji: string) {
+    reactions.toggle(messageId, emoji, me).catch((e) => showToast(errorMessage(e)));
+  }
+
+  /** Scroll to a message (from search, the gallery or a link), loading older pages if needed. */
+  async function jumpTo(id: string) {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    for (let i = 0; i < 20 && !messagesRef.current?.some((m) => m.id === id) && hasOlderRef.current; i++) {
+      stick.current = false;
+      await loadOlder();
+      await frame();
+    }
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-mid="${id}"]`);
+    if (!el) { showToast('That message is no longer here.'); return; }
+    stick.current = false;
+    el.scrollIntoView({ block: 'center' });
+    setHighlight(id);
+    setTimeout(() => setHighlight((h) => (h === id ? null : h)), 2500);
+  }
+  const deepLink = params.get('m');
+  useEffect(() => {
+    if (!deepLink || messages === null) return;
+    setParams((p) => { p.delete('m'); return p; }, { replace: true });
+    void jumpTo(deepLink);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLink, messages === null]);
 
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // Grow the message box with its content (up to the CSS max-height), shrink when sent.
@@ -429,7 +472,7 @@ export function Chat() {
           return (
             <div key={m.client_msg_id + m.sender_id} style={{ display: 'contents' }}>
               {daySep}
-              <div className={`msg ${mine ? 'msg-me' : 'msg-them'}${m.local === 'sending' ? ' msg-pending' : ''}${m.local === 'failed' ? ' msg-failed' : ''}`}
+              <div className={`msg ${mine ? 'msg-me' : 'msg-them'}${m.local === 'sending' ? ' msg-pending' : ''}${m.local === 'failed' ? ' msg-failed' : ''}${highlight === m.id ? ' msg-highlight' : ''}`}
                    data-testid="message" data-mid={m.id}>
                 {showAuthor && <span className="msg-author">{nameOf(m.sender_id)}{handleOf(m.sender_id) ? <span className="muted"> @{handleOf(m.sender_id)}</span> : null}</span>}
                 {quoted && <span className="msg-meta">↪ {quoted.deleted_at ? 'deleted message' : (quoted.body ?? '').slice(0, 60)}</span>}
@@ -447,6 +490,8 @@ export function Chat() {
                         onClick={() => !m.deleted_at && !m.local && setMenuFor(m)}>
                   {m.deleted_at ? 'Message deleted' : m.kind === 'text' ? m.body : `[${m.kind}]`}
                 </button>)}
+                {!m.deleted_at && (reactions.byMessage.get(m.id)?.length ?? 0) > 0 && (
+                  <ReactionChips list={reactions.byMessage.get(m.id)!} me={me} nameOf={nameOf} onToggle={(e) => react(m.id, e)} />)}
                 <span className="msg-meta">
                   {clockTime(m.created_at)}{m.edited_at && !m.deleted_at ? ' · edited' : ''}
                   {m.kind === 'photo' && !m.deleted_at && !m.local && <> · <button className="link-btn small" aria-label="Photo options"
@@ -485,6 +530,15 @@ export function Chat() {
 
       {menuFor && (
         <Sheet label="Message options" onClose={() => setMenuFor(null)}>
+          {!menuExpired && menuFor.kind !== 'snap' && (
+            <div className="reaction-picker" role="group" aria-label="React">
+              {QUICK_REACTIONS.map((e) => {
+                const mineNow = reactions.byMessage.get(menuFor.id)?.some((r) => r.user_id === me && r.emoji === e);
+                return <button key={e} className="reaction-pick" aria-label={`React ${e}`} aria-pressed={Boolean(mineNow)}
+                  onClick={() => { const id = menuFor.id; setMenuFor(null); react(id, e); }}>{e}</button>;
+              })}
+            </div>
+          )}
           {menuExpired && <p className="muted small" style={{ margin: '4px 4px 8px' }}>This message has disappeared. You can still report it for a short while.</p>}
           {!menuExpired && <button className="sheet-item" onClick={() => { setReplyTo(menuFor); setMenuFor(null); }}>Reply</button>}
           {menuFor.kind === 'text' && <button className="sheet-item" onClick={() => {
@@ -513,6 +567,8 @@ export function Chat() {
       {showExpiry && conv && (
         <Sheet label="Chat settings" onClose={() => setShowExpiry(false)}>
           {conv.kind === 'group' && <Link className="sheet-item" to={`/chats/${convId}/info`}>Group info and members</Link>}
+          <button className="sheet-item" onClick={() => { setShowExpiry(false); setShowSearch(true); }}>Search in this chat</button>
+          <button className="sheet-item" onClick={() => { setShowExpiry(false); setShowGallery(true); }}>Photos, links and saved</button>
           <p className="muted small" style={{ margin: '4px 4px 8px' }}>Disappearing messages{conv.kind === 'group' ? ' (group admins can change this)' : ''}. A change applies to new messages.</p>
           {(Object.keys(EXPIRY_TEXT) as Expiry[]).map((mode) => (
             <button key={mode} className="sheet-item" aria-pressed={conv.expiry_mode === mode} onClick={async () => {
@@ -524,6 +580,10 @@ export function Chat() {
           <button className="sheet-item" onClick={() => setShowExpiry(false)}>Close</button>
         </Sheet>
       )}
+      {showSearch && <SearchSheet convId={convId} title="Search in this chat" nameOf={(uid) => (uid === me ? 'You' : nameOf(uid))}
+        onPick={(h) => { setShowSearch(false); void jumpTo(h.message_id); }} onClose={() => setShowSearch(false)} />}
+      {showGallery && <GallerySheet convId={convId} dataSaver={settings?.data_saver === true}
+        onPick={(id) => { setShowGallery(false); void jumpTo(id); }} onClose={() => setShowGallery(false)} />}
       {viewing && <SnapViewer snapId={viewing} onClose={closeViewer} />}
       {toast}
     </div>

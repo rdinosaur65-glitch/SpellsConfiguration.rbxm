@@ -35,7 +35,7 @@ export function Privacy() {
         <li>Only accepted friends see your profile. Strangers who search see only your username and display name.</li>
         <li>The owner of PULSE <strong>cannot read your chats, Snaps or photos</strong>; the database does not allow it. Reports show the owner only what the reporter could see.</li>
         <li>If you lose your authenticator app, the owner can turn off your two-step verification after confirming it is you. This needs a code sent to the owner's email; it signs you out everywhere, keeps your password, and you get an email about it.</li>
-        <li>If you block someone, they lose your chat at once. You keep it, marked “Blocked”, until you tap ×, which deletes it for both of you for good.</li>
+        <li>If you block someone, they lose your chat at once. You keep it, marked “Blocked”, until you tap ×, which removes it from your list only — nothing is deleted, and their copy of the chat is not touched.</li>
         <li>Messages are protected in transit and at rest by the hosting provider, but they are <strong>not end-to-end encrypted</strong>.</li>
         <li>No ads, no trackers, no selling of data. Photos are re-encoded on your device, which removes location data.</li>
       </ul>

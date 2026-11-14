@@ -45,7 +45,7 @@ test('long names never push buttons off a small phone screen', async ({ browser 
 test('tall sheets scroll inside a short screen', async ({ browser }) => {
   const { ca, cb, a, ub } = await pair(browser, { viewport: { width: 375, height: 548 }, isMobile: true, hasTouch: true });
   await nav(a, 'Friends').click();
-  await a.getByRole('button', { name: `More options for ${ub}` }).click();
+  await a.getByTestId('friend-row').getByRole('button', { name: `More options for ${ub}` }).click();
   await a.getByRole('button', { name: 'Report' }).click();
   const sheet = a.getByRole('dialog');
   const box = (await sheet.boundingBox())!;

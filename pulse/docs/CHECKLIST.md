@@ -61,7 +61,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Username search (partial, rate-limited, block-aware) | ✅ | UI + e2e |
 | Requests: send/accept/decline/cancel, mutual auto-accept, live updates | ✅ | UI + e2e |
 | Remove friend, block (also from requests/search), unblock list, report user | ✅ | UI; block in e2e; blocks with an existing chat tested (75) |
-| Blocked chat stays for the blocker with an × that erases it for both (messages, Snaps, media) | ✅ | 0022, test 76, e2e social |
+| Blocked chat stays for the blocker; × removes it from that person's list only (per-member setting, nothing deleted, persists across sign-in, independent for both people) | ✅ | 0025, test 76, e2e blocking + social |
 | Owner panel requires the owner's own 2FA (aal2) | ✅ | 0024, tests 90, functions.test.mjs, e2e owner |
 | Final review fixes: Snap view race, member-removal deadlock, egress budget for double metering | ✅ | 0024, concurrency.sh races 6–7, test 75 |
 | Small phones: long names, tall sheets, 44 px touch targets, keyboard keeps newest message, pinch-zoom | ✅ | e2e mobile.spec.ts (iPhone SE, Pixel 7, 375×548) |

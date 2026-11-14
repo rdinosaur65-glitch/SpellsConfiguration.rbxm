@@ -294,7 +294,8 @@ test('2FA reset of another account needs the code emailed to the owner', async (
     // refused before anything is sent. (The local functions .env sends from no-reply@pulse.local.)
     const ownerEmail = emailOf(owner.id);
     const sender = 'no-reply@pulse.local';
-    sql(`update auth.users set email = '${sender}' where id = '${owner.id}'`);
+    // An alias of the sender mailbox (case, +tag) counts as the same mailbox.
+    sql(`update auth.users set email = 'No-Reply+owner@Pulse.Local' where id = '${owner.id}'`);
     let same;
     const t0 = Date.now() - 1000;
     try { same = await resetFn(owner.token, { action: 'request', target_id: other.id, reason: 'sender check' }); }

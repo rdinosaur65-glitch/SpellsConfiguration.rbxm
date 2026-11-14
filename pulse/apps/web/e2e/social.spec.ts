@@ -84,7 +84,7 @@ test('two people become friends and chat in real time', async ({ browser }) => {
   await expect(b.getByTestId('messages')).toContainText('quiet typing');
 
   // Blocking removes the friendship. The blocker keeps the chat, marked Blocked, with an ×
-  // that erases it for good; the blocked person no longer sees it at all.
+  // that removes it from their own list; the blocked person no longer sees it at all.
   await a.getByRole('link', { name: 'Back to chats' }).click();
   await openFriends(a);
   await a.getByRole('button', { name: `More options for ${ub}` }).click();
@@ -96,9 +96,8 @@ test('two people become friends and chat in real time', async ({ browser }) => {
   await expect(blockedRow).toHaveCount(1);
   await b.getByRole('link', { name: 'Back to chats' }).click();
   await expect(b.getByText('No chats yet')).toBeVisible();
-  a.once('dialog', (d) => d.accept());
-  await blockedRow.getByRole('button', { name: /^Delete chat with / }).click();
-  await expect(a.getByText('Chat deleted')).toBeVisible();
+  await blockedRow.getByRole('button', { name: /^Remove chat with .* from your list$/ }).click();
+  await expect(a.getByText('Removed from your chats')).toBeVisible();
   await expect(a.getByText('No chats yet')).toBeVisible();
 
   await ctxA.close(); await ctxB.close();

@@ -43,7 +43,7 @@ export interface ChatListItem {
   last_activity: string;
   pinned_rank: number | null;
   muted: boolean;
-  /** A direct chat with someone I blocked: shown with an × that erases it for good. */
+  /** A direct chat with someone I blocked: shown with an × that removes it from my list only. */
   blocked: boolean;
 }
 

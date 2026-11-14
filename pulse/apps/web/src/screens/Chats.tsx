@@ -24,15 +24,16 @@ export function Chats() {
   const [menuFor, setMenuFor] = useState<ChatListItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [toast, showToast] = useToast();
-  const [erasing, setErasing] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
-  async function erase(c: ChatListItem, title: string) {
-    if (erasing) return;
-    if (!window.confirm(`Delete your chat with ${title} for good? Every message, photo and Snap in it is erased for both of you. This cannot be undone.`)) return;
-    setErasing(c.conversation_id);
-    try { await rpc('delete_blocked_chat', { p_conv: c.conversation_id }); showToast('Chat deleted'); await reload(); }
+  /** × on a blocked chat: removes it from *my* list only. Nothing is deleted; the other
+   *  person's chat and history are untouched. */
+  async function removeFromList(c: ChatListItem) {
+    if (removing) return;
+    setRemoving(c.conversation_id);
+    try { await rpc('hide_chat', { p_conv: c.conversation_id }); showToast('Removed from your chats'); await reload(); }
     catch (e) { showToast(errorMessage(e)); }
-    finally { setErasing(null); }
+    finally { setRemoving(null); }
   }
 
   const visible = useMemo(() => (items ?? []).filter((c) =>
@@ -66,8 +67,8 @@ export function Chats() {
                       <span className="list-title truncate" style={{ display: 'block' }}>{title}</span>
                       <span className="list-sub label-quiet"><span className="label-dot" />Blocked</span>
                     </span>
-                    <Button variant="ghost" className="icon-btn" aria-label={`Delete chat with ${title}`}
-                      busy={erasing === c.conversation_id} onClick={() => void erase(c, title)}>
+                    <Button variant="ghost" className="icon-btn" aria-label={`Remove chat with ${title} from your list`}
+                      busy={removing === c.conversation_id} onClick={() => void removeFromList(c)}>
                       <Icon name="close" size={20} />
                     </Button>
                   </div>

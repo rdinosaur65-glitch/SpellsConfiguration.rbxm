@@ -12,6 +12,19 @@
 import { CORS, SERVICE_KEY, UUID, json, rpc } from '../_shared/http.ts';
 import { sendMail } from '../_shared/smtp.ts';
 
+/** Mailbox identity for comparison: lower case; for Gmail, dots and "+tag" do not matter and
+ *  googlemail.com is gmail.com (all deliver to the same inbox). */
+export function mailbox(address: string): string {
+  const a = address.trim().toLowerCase();
+  const at = a.lastIndexOf('@');
+  if (at < 0) return a;
+  let local = a.slice(0, at), domain = a.slice(at + 1);
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  local = local.split('+')[0]!;
+  if (domain === 'gmail.com') local = local.replaceAll('.', '');
+  return `${local}@${domain}`;
+}
+
 const STATUS: Record<string, number> = {
   not_authenticated: 401, mfa_required: 401, forbidden: 403, owner_mfa_required: 403, reauthentication_required: 401,
   rate_limited: 429, reason_required: 400, user_not_found: 404, cannot_moderate_owner: 400,
@@ -67,9 +80,9 @@ Deno.serve(async (req) => {
     const { code, owner_email, target_username } = issued.data[0];
     // The notice to the affected user must never reveal the owner's address, so refuse to
     // run while mail would be sent from (or through) the owner's own mailbox.
-    const owner = owner_email.trim().toLowerCase();
+    const owner = mailbox(owner_email);
     const senders = [Deno.env.get('PULSE_SMTP_FROM'), Deno.env.get('PULSE_SMTP_USER')]
-      .map((v) => (v ?? '').trim().toLowerCase()).filter(Boolean);
+      .map((v) => (v ?? '').trim()).filter(Boolean).map(mailbox);
     if (senders.includes(owner)) {
       await rpc('mfa_reset_mark_sent', { p_request: requestId, p_delivered: false, p_error: 'smtp sender is the owner address' }, SERVICE_KEY);
       return json(409, { error: 'smtp_sender_is_owner' });

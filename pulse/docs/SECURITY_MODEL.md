@@ -56,11 +56,15 @@ immediately, not when its JWT expires. Its own state is readable only through
   (`user_not_found`) and a blocked person's pending request reads "declined". A blocked
   person can still infer the block, because their direct chat with the blocker disappears.
 - Blocks: the blocked person loses the direct chat entirely (history, roster, settings,
-  read receipts, topic, Snaps, live Snap sessions). The person who blocked keeps it in their
-  list, marked "Blocked", with an × that erases it for good (`delete_blocked_chat`, 0022):
-  every message, receipt, reaction, save, Snap delivery and its media, for both people.
-  Only the blocker can do this; report evidence snapshots are kept. In groups, each side stops seeing the
-  other's messages, reactions and receipts and they are left out of the roster.
+  read receipts, topic, Snaps, live Snap sessions) while the block lasts. The person who
+  blocked keeps it in their list, marked "Blocked", with an ×. Pressing × is a per-person
+  visibility setting (`hide_chat`, `conversation_members.hidden_at`, 0025): the chat leaves
+  that person's list only — on every device and after signing in again — and nothing is
+  deleted: the conversation, messages, receipts, Snaps and files stay as they are for the
+  other person (who sees them again if the block is lifted). The setting is private to the
+  member who set it. The chat returns to their list when they open it again from Friends or
+  when a new message arrives after a later unblock and new friendship. In groups, each side
+  stops seeing the other's messages, reactions and receipts and they are left out of the roster.
 - Ending a friendship makes the direct chat read-only (no messages, reactions, typing).
 - Co-members cannot read each other's member rows (pins, mutes, wallpaper, last read),
   saves, or read receipts; a sender sees who read their own messages.

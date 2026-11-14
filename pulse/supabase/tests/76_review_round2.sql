@@ -197,44 +197,89 @@ begin
   perform private.refresh_db_usage();
 end $$;
 
--- Blocked chats stay listed for the blocker, who can erase them (0022).
+-- Blocked chats stay listed for the blocker; × hides the chat for that person only (0025).
 do $$
-declare a uuid; b uuid; c uuid; conv uuid; conv_bc uuid; m uuid; pic uuid; snap uuid; snap2 uuid; img uuid; img2 uuid;
+declare a uuid; b uuid; c uuid; conv uuid; conv_bc uuid; pic uuid; snap uuid; img uuid; n_msgs integer; n_rows integer;
 begin
   a := test.new_user('blk2_a_76'); b := test.new_user('blk2_b_76'); c := test.new_user('blk2_c_76');
   perform test.befriend(a, b); perform test.befriend(a, c); perform test.befriend(b, c);
   pic := test.upload(b, 'chat', 'image/jpeg', 900);
   img := test.upload(b, 'snap', 'image/jpeg', 700);
-  img2 := test.upload(b, 'snap', 'image/jpeg', 600);
   perform test.as_user(b);
   conv := public.create_direct_conversation(a);
   conv_bc := public.create_direct_conversation(c);
   perform public.set_chat_expiry(conv, 'never');
-  m := public.send_message(conv, 'photo', null, gen_random_uuid(), pic);
+  perform public.send_message(conv, 'photo', null, gen_random_uuid(), pic);
   perform public.send_message(conv, 'text', 'hello', gen_random_uuid());
-  snap := public.send_snap(img, array[a], null, 5::smallint, false, gen_random_uuid());        -- only to a
-  snap2 := public.send_snap(img2, array[a, c], null, 5::smallint, false, gen_random_uuid());   -- to a and c
+  snap := public.send_snap(img, array[a], null, 5::smallint, false, gen_random_uuid());
   perform test.as_user(a);
+  perform public.set_pin(conv, 1::smallint);
+  perform public.send_message(conv, 'text', 'hi back', gen_random_uuid());
+  perform test.as_superuser();
+  select count(*) into n_msgs from public.messages where conversation_id = conv;
+
+  perform test.ok(not exists (select 1 from pg_proc where proname = 'delete_blocked_chat'), 'no global chat deletion exists');
+  perform test.as_user(a);
+  perform test.throws(format('select public.hide_chat(%L)', conv), 'not_allowed', 'only a blocked chat can be removed');
   perform public.block_user(b);
   perform test.ok((select blocked and label = 'Blocked' and not unread from public.chat_list() where conversation_id = conv),
                   'blocker still sees the chat, marked blocked (and never unread)');
   perform test.as_user(b);
-  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'blocked person does not');
-  perform test.throws(format('select public.delete_blocked_chat(%L)', conv), 'not_allowed', 'only the blocker can erase');
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'blocked person does not (existing rule)');
+  perform test.throws(format('select public.hide_chat(%L)', conv), 'not_allowed', 'the blocked person has no × to press');
+  perform test.throws(format($q$select public.send_message(%L, 'text', 'let me in', gen_random_uuid())$q$, conv), 'not_a_member',
+                      'blocking still stops messages (blocked person)');
+  perform test.as_user(a);
+  perform test.throws(format($q$select public.send_message(%L, 'text', 'me neither', gen_random_uuid())$q$, conv), 'not_a_member',
+                      'blocking still stops messages (blocker)');
   perform test.as_user(c);
-  perform test.throws(format('select public.delete_blocked_chat(%L)', conv), 'not_a_member', 'outsiders cannot');
+  perform test.throws(format('select public.hide_chat(%L)', conv), 'not_a_member', 'outsiders cannot');
+
+  -- a presses ×: gone from a's list only; nothing is deleted.
   perform test.as_user(a);
-  perform public.delete_blocked_chat(conv);
+  perform public.hide_chat(conv);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'gone from the presser''s list');
   perform test.as_superuser();
-  perform test.ok(not exists (select 1 from public.conversations where id = conv), 'chat erased');
-  perform test.ok(not exists (select 1 from public.messages where conversation_id = conv), 'messages erased');
-  perform test.ok((select status from public.media_assets where id = pic) = 'deleting', 'media released');
-  perform test.ok(not exists (select 1 from public.snaps where id = snap), 'Snap sent only in that chat erased');
-  perform test.ok((select status from public.media_assets where id = img) = 'deleting', 'its media released');
-  perform test.ok(exists (select 1 from public.snap_recipients where snap_id = snap2 and recipient_id = c),
-                  'a Snap also sent to someone else stays for them');
-  perform test.ok((select status from public.media_assets where id = img2) = 'uploaded', 'and keeps its media');
-  perform test.ok(exists (select 1 from public.conversations where id = conv_bc), 'other chats untouched');
+  perform test.ok(exists (select 1 from public.conversations where id = conv), 'conversation kept');
+  perform test.ok((select count(*) from public.messages where conversation_id = conv) = n_msgs, 'every message kept');
+  perform test.ok((select status from public.media_assets where id = pic) = 'uploaded', 'photo kept');
+  perform test.ok(exists (select 1 from public.snaps where id = snap), 'Snap kept');
+  perform test.ok((select hidden_at is not null and pinned_rank is null from public.conversation_members
+                    where conversation_id = conv and user_id = a), 'hidden for a (and unpinned)');
+  perform test.ok((select hidden_at is null from public.conversation_members where conversation_id = conv and user_id = b),
+                  'b''s membership untouched');
+
+  -- b's side, independently: after an unblock b sees the whole history again; a still does not.
   perform test.as_user(a);
-  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'gone from the list');
+  perform public.unblock_user(b);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'still hidden for a after unblocking');
+  perform test.as_user(b);
+  perform test.ok(exists (select 1 from public.chat_list() where conversation_id = conv), 'b has the chat back');
+  perform test.ok((select count(*) from public.messages where conversation_id = conv) = n_msgs, 'b sees every message');
+  -- b blocks a and removes it too; a's and b's settings are separate.
+  perform public.block_user(a);
+  perform test.ok((select blocked from public.chat_list() where conversation_id = conv), 'b sees it as blocked');
+  perform public.hide_chat(conv);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'gone from b''s list');
+  perform test.as_superuser();
+  select count(*) into n_rows from public.messages where conversation_id = conv;
+  perform test.ok(n_rows = n_msgs and exists (select 1 from public.conversations where id = conv), 'still nothing deleted');
+  perform test.ok(exists (select 1 from public.conversations where id = conv_bc), 'other chats untouched');
+
+  -- It comes back when something new is said after the unblock (and a new friendship)…
+  perform test.as_user(b);
+  perform public.unblock_user(a);
+  perform test.befriend(a, b);
+  perform test.as_user(a);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'friends again, still hidden for a');
+  perform test.as_user(b);
+  perform test.ok(public.create_direct_conversation(a) = conv, 'b opens the same chat (history intact)');
+  perform test.ok(exists (select 1 from public.chat_list() where conversation_id = conv), '…and opening it from Friends puts it back for b');
+  perform test.as_superuser();      -- (one transaction here: make the hide happen "earlier" than the message)
+  update public.conversation_members set hidden_at = hidden_at - interval '1 second' where conversation_id = conv;
+  perform test.as_user(b);
+  perform public.send_message(conv, 'text', 'friends again', gen_random_uuid());
+  perform test.as_user(a);
+  perform test.ok(exists (select 1 from public.chat_list() where conversation_id = conv), 'a new message puts it back for a');
+  perform test.as_superuser();
 end $$;

@@ -47,13 +47,24 @@ see LAUNCH_GUIDE §5); it must be a PULSE mailbox, not the owner's own address.
 
 ## 3. Blocked chats with an ×
 
-When you block someone, your direct chat with them now stays in your list, labelled
-**Blocked**, with an × beside their name. Pressing it (after a confirmation, because it cannot
-be undone) erases the chat from existence for both people: messages, receipts, reactions,
-saves, Snaps that were sent only in that chat, and their media (`delete_blocked_chat`,
-migration 0022). The blocked person still sees nothing of the chat. Only the blocker can erase
-it; abuse-report evidence snapshots are kept. Tests: SQL 76 (erase, Snaps, media, who may),
-e2e social (blocker sees ×, blocked person sees nothing, × erases).
+When you block someone, your direct chat with them stays in your list, labelled **Blocked**,
+with an × beside their name. Pressing × removes the chat **from your own list only**. It is a
+per-person visibility setting (`hide_chat`, `conversation_members.hidden_at`, migration
+0025), not a deletion: the conversation record, every message, receipt, Snap and file stay
+exactly as they were, and the other person's chat and history are untouched. The setting is
+stored in the database, so it holds on all your devices and after you sign out and back in,
+and each participant's setting is independent. Blocking rules are unchanged: while blocked,
+the blocked person cannot see or use the chat and neither side can send.
+
+(An earlier version in this phase, migration 0022, erased the chat for both people; at your
+request it was replaced — 0025 drops that function.)
+
+Tests: SQL 76 (only the blocker can remove; nothing deleted; the other member's row
+untouched; independent for both; returns on a new message or reopening; blocking still stops
+sending), e2e `blocking.spec.ts` (Ada blocks and removes → Bea's data untouched → still removed
+after Ada signs out and in → after unblocking, Bea sees the full history while Ada's stays
+removed → Bea blocks and removes independently → persists after Bea signs in again → shared
+messages still in the database) and `social.spec.ts`.
 
 ## 4. Final adversarial review and fixes
 
@@ -92,7 +103,7 @@ live rows older than the loaded window no longer slip into a long chat out of or
 | Domain unit tests | 9/9 |
 | SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 13/13 files (incl. concurrency races 1–7) |
 | SQL + Edge Functions on the real local Supabase stack | 14/14 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email) |
-| Playwright end-to-end (built PWA + local stack) | 19 passed, 1 skipped (the screenshot capture, by design) |
+| Playwright end-to-end (built PWA + local stack) | 20 passed, 1 skipped (the screenshot capture, by design) |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |
 
 ## 6. Remaining limitations and risks (honest list)

@@ -93,6 +93,10 @@ begin
   perform test.fresh_owner(o);
   r4 := public.admin_mfa_reset_request(t3, 'expiry test');      -- replaces r3
   perform test.ok(public.admin_mfa_reset_confirm(r3, c3) ->> 'status' = 'cancelled', 'a newer request cancels the old code');
+  perform test.as_superuser();
+  perform test.ok(exists (select 1 from private.audit_log where action = 'account.mfa_reset.cancelled'
+                           and details ->> 'request_id' = r3::text and target_user_id = t3), 'the replaced request is audited (0026)');
+  perform test.ok((select code_hash is null from private.mfa_reset_requests where id = r3), 'its code hash is dropped');
   c4 := test.issue(r4);
   update private.mfa_reset_requests set expires_at = now() - interval '1 second' where id = r4;
   perform test.fresh_owner(o);

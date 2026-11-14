@@ -61,12 +61,16 @@ begin
 
   -- The egress share is checked before a view is used up.
   perform test.as_superuser();
+  perform test.save_egress();
   update private.platform_config set daily_egress_user_bytes = 1000;
+  -- b already downloaded something today (the first download of a day is always allowed).
+  insert into private.usage_daily as u (user_id, day, egress_bytes) values (b, (now() at time zone 'utc')::date, 1)
+  on conflict (user_id, day) do update set egress_bytes = greatest(u.egress_bytes, 1);
   perform test.as_user(b);
   perform test.throws(format('select * from public.open_snap(%L)', snap), 'egress_quota_exceeded', 'refused before using a view');
   perform test.ok((select views_used from public.snap_recipients where snap_id = snap and recipient_id = b) = 0, 'view not used');
   perform test.as_superuser();
-  update private.platform_config set daily_egress_user_bytes = 67108864;
+  perform test.restore_egress();
 end $$;
 
 -- Groups: receipts, saves, blocks and removed members.
@@ -199,7 +203,7 @@ end $$;
 
 -- Blocked chats stay listed for the blocker; × hides the chat for that person only (0025).
 do $$
-declare a uuid; b uuid; c uuid; conv uuid; conv_bc uuid; pic uuid; snap uuid; img uuid; n_msgs integer; n_rows integer;
+declare a uuid; b uuid; c uuid; conv uuid; conv_bc uuid; pic uuid; snap uuid; img uuid; n_msgs integer; n_rows integer; m uuid;
 begin
   a := test.new_user('blk2_a_76'); b := test.new_user('blk2_b_76'); c := test.new_user('blk2_c_76');
   perform test.befriend(a, b); perform test.befriend(a, c); perform test.befriend(b, c);
@@ -273,13 +277,60 @@ begin
   perform test.as_user(a);
   perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'friends again, still hidden for a');
   perform test.as_user(b);
+  perform public.set_chat_expiry(conv, 'after_view');           -- a settings notice is not "something said"
+  perform test.as_user(a);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'a settings notice does not bring it back');
+  perform test.as_user(b);
   perform test.ok(public.create_direct_conversation(a) = conv, 'b opens the same chat (history intact)');
   perform test.ok(exists (select 1 from public.chat_list() where conversation_id = conv), '…and opening it from Friends puts it back for b');
-  perform test.as_superuser();      -- (one transaction here: make the hide happen "earlier" than the message)
-  update public.conversation_members set hidden_at = hidden_at - interval '1 second' where conversation_id = conv;
+  perform test.as_user(a);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'b reopening does not unhide it for a');
   perform test.as_user(b);
-  perform public.send_message(conv, 'text', 'friends again', gen_random_uuid());
+  m := public.send_message(conv, 'text', 'friends again', gen_random_uuid());
   perform test.as_user(a);
   perform test.ok(exists (select 1 from public.chat_list() where conversation_id = conv), 'a new message puts it back for a');
+  -- …and it stays back even if that message is unsent (0027).
+  perform test.as_user(b);
+  perform public.delete_message(m);
+  perform test.as_user(a);
+  perform test.ok(exists (select 1 from public.chat_list() where conversation_id = conv), 'stays back after the message is unsent');
+
+  -- Blocking again shows it as Blocked, even if it was removed during an earlier block (0027).
+  perform public.block_user(b);
+  perform public.hide_chat(conv);
+  perform public.unblock_user(b);
+  perform test.befriend(a, b);
+  perform test.as_user(a);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'removed again, friends again, nothing said');
+  perform public.block_user(b);
+  perform test.ok((select blocked from public.chat_list() where conversation_id = conv), 're-blocking brings back the Blocked row');
+  perform test.as_superuser();
+end $$;
+
+-- Blocking keeps the other person's own history in the direct chat: saves (which keep a
+-- disappearing message) and reactions stay (0027). In groups they are still dropped.
+do $$
+declare d uuid; e uuid; conv uuid; m uuid;
+begin
+  d := test.new_user('blk3_d_76'); e := test.new_user('blk3_e_76');
+  perform test.befriend(d, e);
+  perform test.as_user(d);
+  conv := public.create_direct_conversation(e);                 -- default: disappear after viewing
+  m := public.send_message(conv, 'text', 'remember this', gen_random_uuid());
+  perform test.as_user(e);
+  perform public.mark_conversation_read(conv);
+  perform public.set_message_saved(m, true);
+  perform test.as_user(d);
+  perform public.block_user(e);
+  perform public.hide_chat(conv);
+  perform test.as_superuser();
+  perform test.ok(exists (select 1 from public.saved_messages where message_id = m and user_id = e), 'e''s save survives the block');
+  update public.messages set expires_at = now() - interval '2 hours' where id = m;
+  perform private.run_maintenance();
+  perform test.ok(exists (select 1 from public.messages where id = m), 'so the message is not purged');
+  perform test.as_user(d);
+  perform public.unblock_user(e);
+  perform test.as_user(e);
+  perform test.ok(exists (select 1 from public.messages where id = m), 'e sees it again after the unblock');
   perform test.as_superuser();
 end $$;

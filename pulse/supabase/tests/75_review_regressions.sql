@@ -346,6 +346,7 @@ begin
   conv := public.create_direct_conversation(v);
   perform public.send_message(conv, 'photo', null, gen_random_uuid(), img);
   perform test.as_superuser();
+  perform test.save_egress();
   update private.platform_config set daily_egress_user_bytes = 10000;
   perform test.as_user(v);
   perform public.authorize_media_access(img);
@@ -356,7 +357,7 @@ begin
   perform test.throws(format('select public.authorize_media_access(%L)', img), 'egress_quota_exceeded',
                       'per-user egress share');
   perform test.as_superuser();
-  update private.platform_config set daily_egress_user_bytes = 67108864;
+  perform test.restore_egress();
 end $$;
 
 -- Maintenance: a failing account deletion does not stop expiry; unattached uploads
@@ -477,7 +478,9 @@ end $$;
 do $$
 declare u uuid; big uuid; small uuid;
 begin
-  update private.platform_config set daily_egress_user_bytes = 26214400;   -- the shipped default (0024)
+  perform test.save_egress();
+  update private.platform_config set daily_egress_user_bytes = 26214400,     -- the shipped default (0027)
+                                     daily_egress_budget_bytes = 1073741824;  -- (this test is about the per-person share)
   u := test.new_user('egbig_75');
   big := test.upload(u, 'vault_backup', 'application/octet-stream', 50 * 1048576);
   small := test.upload(u, 'chat', 'image/jpeg', 1000);
@@ -490,5 +493,7 @@ begin
   perform test.throws(format('select public.authorize_media_access(%L)', small), 'egress_quota_exceeded',
                       'the share applies after that');
   perform test.as_superuser();
-  update private.platform_config set daily_egress_user_bytes = 67108864;
+  -- Give the day's project budget back for the suites that follow.
+  update private.egress_daily set bytes = greatest(bytes - 50 * 1048576, 0) where day = (now() at time zone 'utc')::date;
+  perform test.restore_egress();
 end $$;

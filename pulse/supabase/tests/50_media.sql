@@ -107,13 +107,14 @@ begin
 
   -- Daily egress budget.
   perform test.as_superuser();
+  perform test.save_egress();
   update private.platform_config set daily_egress_budget_bytes = 1;
   delete from private.egress_recent;   -- a re-fetch within 10 minutes is not charged twice
   perform test.as_user(v);
   perform test.throws(format('select public.authorize_media_access(%L)', img), 'egress_budget_exhausted',
                       'egress budget enforced');
   perform test.as_superuser();
-  update private.platform_config set daily_egress_budget_bytes = 167772160;
+  perform test.restore_egress();
 end $$;
 
 -- Rate limiting.

@@ -59,9 +59,21 @@ the blocked person cannot see or use the chat and neither side can send.
 (An earlier version in this phase, migration 0022, erased the chat for both people; at your
 request it was replaced — 0025 drops that function.)
 
+An independent review of this change then found, and 0027 fixed: a chat that had come
+back could vanish again when its new messages expired or were unsent, and re-blocking hid it
+at once (now any new message clears the setting, so a returned chat stays); a settings notice
+alone brought a removed chat back (no longer); blocking deleted the other person's saves in
+the direct chat, which could let a disappearing message be purged — so their history was not
+truly untouched (saves and reactions in direct chats are now kept); and block_user could
+deadlock with a member leaving a shared group (it now takes the chat locks first; concurrency
+race 8 deadlocked before the fix). The same review found that 0024's 25 MiB per-person
+download share never took effect (fixed in 0027).
+
 Tests: SQL 76 (only the blocker can remove; nothing deleted; the other member's row
-untouched; independent for both; returns on a new message or reopening; blocking still stops
-sending), e2e `blocking.spec.ts` (Ada blocks and removes → Bea's data untouched → still removed
+untouched; independent for both; returns on a new message or reopening and stays after the
+message is unsent; a settings notice does not bring it back; re-blocking shows it again;
+blocking keeps the other person's saved message, which survives maintenance; blocking still
+stops sending), e2e `blocking.spec.ts` (Ada blocks and removes → Bea's data untouched → still removed
 after Ada signs out and in → after unblocking, Bea sees the full history while Ada's stays
 removed → Bea blocks and removes independently → persists after Bea signs in again → shared
 messages still in the database) and `social.spec.ts`.
@@ -101,7 +113,7 @@ live rows older than the loaded window no longer slip into a long chat out of or
 | Suite | Result |
 |---|---|
 | Domain unit tests | 9/9 |
-| SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 13/13 files (incl. concurrency races 1–7) |
+| SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 13/13 files (incl. concurrency races 1–8) |
 | SQL + Edge Functions on the real local Supabase stack | 14/14 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email) |
 | Playwright end-to-end (built PWA + local stack) | 20 passed, 1 skipped (the screenshot capture, by design) |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |

@@ -102,3 +102,17 @@ begin
 end $$;
 
 grant execute on all functions in schema test to authenticated, anon, service_role;
+
+-- Save and restore the egress settings around a test that changes them (restoring a
+-- hard-coded number would silently leave the database on an outdated default).
+create or replace function test.save_egress() returns void language plpgsql as $$
+begin
+  create temp table if not exists test_saved_egress (budget bigint, per_user bigint);
+  delete from test_saved_egress;
+  insert into test_saved_egress select daily_egress_budget_bytes, daily_egress_user_bytes from private.platform_config;
+end $$;
+create or replace function test.restore_egress() returns void language plpgsql as $$
+begin
+  update private.platform_config c set daily_egress_budget_bytes = s.budget, daily_egress_user_bytes = s.per_user
+    from test_saved_egress s;
+end $$;

@@ -63,7 +63,10 @@ immediately, not when its JWT expires. Its own state is readable only through
   deleted: the conversation, messages, receipts, Snaps and files stay as they are for the
   other person (who sees them again if the block is lifted). The setting is private to the
   member who set it. The chat returns to their list when they open it again from Friends or
-  when a new message arrives after a later unblock and new friendship. In groups, each side
+  when a new message is posted after a later unblock and new friendship (it then stays,
+  0027); blocking the person again shows it as Blocked again. Blocking does not touch the
+  other person's saves or reactions in the direct chat (a save is what keeps a disappearing
+  message); in shared groups they are dropped as before. In groups, each side
   stops seeing the other's messages, reactions and receipts and they are left out of the roster.
 - Ending a friendship makes the direct chat read-only (no messages, reactions, typing).
 - Co-members cannot read each other's member rows (pins, mutes, wallpaper, last read),

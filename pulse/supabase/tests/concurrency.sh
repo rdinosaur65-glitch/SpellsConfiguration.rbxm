@@ -9,6 +9,7 @@
 #  5. A read races a member leaving -> the same guarantee.
 #  6. A Snap view authorisation races its close -> never served AND refunded.
 #  7. A member removal races their read -> no deadlock, the removal happens.
+#  8. Blocking someone while they leave a shared group -> no deadlock.
 set -uo pipefail
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -183,3 +184,31 @@ left=$("${PSQL[@]}" "${DB[@]}" -At -c "select left_at is not null from public.co
 deadlocks=$(cat $TMP/race7a $TMP/race7b | grep -c 'deadlock')
 echo "  remove vs read race: removed=$left deadlocks=$deadlocks"
 [ "$left" = "t" ] && [ "$deadlocks" = "0" ] || { cat $TMP/race7a $TMP/race7b; exit 1; }
+
+# --- 8. blocking someone while they leave a shared group must not deadlock
+g8=$("${PSQL[@]}" "${DB[@]}" -At -f "$ROOT/supabase/tests/helpers.sql" -f - 2>&1 <<SQL | grep -E '^G8|ERROR' | tail -1
+create temp table g8 as select test.new_user('race_p_' || floor(random()*1e6)::int) p, test.new_user('race_q_' || floor(random()*1e6)::int) q;
+select test.befriend(p, q) from g8;
+alter table g8 add column conv uuid, add column msg uuid;
+grant all on g8 to authenticated;
+select test.as_user(q) from g8;
+update g8 set conv = public.create_group('race8', array[p]);
+update g8 set msg = public.send_message(conv, 'text', 'saved by p', gen_random_uuid());
+select test.as_user(p) from g8;
+select public.set_message_saved(msg, true) from g8;
+select 'G8 ' || conv || ' ' || p || ' ' || q from g8;
+SQL
+)
+g8="${g8#G8 }"
+read -r G8CONV G8P G8Q <<< "$g8"
+if [ -z "${G8Q:-}" ]; then echo "race 8 setup failed: $g8"; exit 1; fi
+# p leaves (holding the chat lock a moment first, as leave_group takes it), q blocks p meanwhile.
+claims_p="select set_config('request.jwt.claims', '{\"sub\":\"$G8P\",\"role\":\"authenticated\"}', false);"
+"${PSQL[@]}" "${DB[@]}" -At -c "$claims_p" -c "begin; select private.lock_conv('$G8CONV'); select pg_sleep(1); select 'LEFT ' || public.leave_group('$G8CONV'); commit;" > $TMP/race8a 2>&1 & P1=$!
+sleep 0.3
+"${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$G8Q")" -c "select 'BLOCKED ' || public.block_user('$G8P');" > $TMP/race8b 2>&1 & P2=$!
+wait $P1 $P2
+deadlocks=$(cat $TMP/race8a $TMP/race8b | grep -c 'deadlock')
+ok=$(cat $TMP/race8a $TMP/race8b | grep -cE '^(LEFT|BLOCKED)')
+echo "  block vs leave race: completed=$ok deadlocks=$deadlocks"
+[ "$deadlocks" = "0" ] && [ "$ok" = "2" ] || { cat $TMP/race8a $TMP/race8b; exit 1; }

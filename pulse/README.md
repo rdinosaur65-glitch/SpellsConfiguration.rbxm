@@ -5,7 +5,7 @@ run on a strict **€0** infrastructure budget.
 
 **Status:** backend + first working web app (accounts, 2FA, friends, realtime chat,
 settings, camera preview, offline shell), tested end-to-end against a real local Supabase
-stack. Not deployed yet. See `docs/PHASE_REPORT_03.md` (independent review + hardening) and `docs/PHASE_REPORT_02.md`.
+stack. Not deployed yet. Start with `docs/PHASE_REPORT_04.md` (current state, test results, owner steps); earlier: `docs/PHASE_REPORT_03.md` (independent review + hardening) and `docs/PHASE_REPORT_02.md`.
 
 ## Layout
 ```

@@ -31,7 +31,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Realtime: postgres_changes under RLS | ✅ | e2e; every subscription filtered to the user; DELETE events no longer published (they bypass RLS) |
 | Realtime: private broadcast topic authorisation | ✅ | e2e typing indicator; tests 60, 75 (policies on realtime.messages), 90 |
 | Error monitoring / logging | 🟠 | Error boundary + Supabase logs; no client error table yet |
-| CI | 🟡 | `.github/workflows/pulse.yml` written; not yet run (push to GitHub was refused) |
+| CI | ✅ | `.github/workflows/pulse.yml`: `unit` (domain, build, SQL on shim) and `supabase-e2e` (real stack, Edge Functions with Mailpit, Playwright) — green on GitHub (report 4) |
 
 ## Phase 1 — Foundation
 | Item | Status | Notes |
@@ -108,8 +108,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Calls, push, map/location | ⬜ |
 
 ## Phase 7 — Hardening
-Security review: 🟠 → multi-agent adversarial review done (report 3): 97 confirmed findings, all
-fixed or documented with tests. Still owed: a human review before inviting real users.
+Security review: 🟠 → multi-agent adversarial reviews done (report 3: 97 confirmed findings;
+report 4: 17 more on the beta changes), all fixed or documented with tests. Still owed: a human review before inviting real users.
 Known limitations (documented, not fixable at €0 or in SQL): typing-indicator payloads are
 client-supplied (any member can fake another member typing); a removed member keeps an
 already-joined broadcast channel until their token expires (≤1 h); the Turnstile widget is

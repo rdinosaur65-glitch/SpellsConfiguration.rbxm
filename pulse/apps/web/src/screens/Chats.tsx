@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { rpc } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
-import { relativeTime } from '../lib/time';
+import { relativeTime, shortTime } from '../lib/time';
 import type { ChatListItem } from '../lib/types';
-import { Avatar, Banner, Button, Empty, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
-import { useChatList } from '../lib/live';
+import { Avatar, Banner, Button, Empty, Icon, Sheet, Spinner, useToast } from '../components/ui';
+import { useChatList, useFriendRequests } from '../lib/live';
 import { useAuth } from '../lib/auth';
 import { milestonePending, useStreaks, type Streak } from '../lib/streaks';
 import { MilestoneBanner, StreakBadge } from '../components/Streak';
@@ -24,6 +24,8 @@ export function Chats() {
   const streaks = useStreaks();
   const [celebrate, setCelebrate] = useState<Streak | null>(null);
   const { items, error, reload } = useChatList();
+  const { requests } = useFriendRequests();
+  const incoming = requests.filter((r) => r.direction === 'incoming').length;
   const [folder, setFolder] = useState<Folder>('all');
   // Re-read on every visit: some changes (a block, an unfriend) have no realtime event.
   useEffect(() => { void reload(); }, [reload]);
@@ -57,8 +59,18 @@ export function Chats() {
 
   return (
     <div className="screen">
-      <Header title="Chats" left={<button className="icon-btn" aria-label="Search all chats" onClick={() => setSearching(true)}><Icon name="search" /></button>}
-        right={<button className="icon-btn" aria-label="New group" onClick={() => setCreating(true)}><Icon name="plus" /></button>} />
+      <header className="chats-head">
+        <h1 className="chats-title">Chats</h1>
+        <div className="chats-actions">
+          <button className="head-btn" aria-label="Search all chats" onClick={() => setSearching(true)}><Icon name="search" /></button>
+          <Link to="/people" className="head-btn" data-testid="people-button"
+                aria-label={incoming > 0 ? `People, ${incoming} friend request${incoming > 1 ? 's' : ''}` : 'People'}>
+            <Icon name="person-add" />
+            {incoming > 0 && <span className="head-badge" aria-hidden="true">{incoming > 9 ? '9+' : incoming}</span>}
+          </Link>
+          <button className="head-btn" aria-label="New chat or group" onClick={() => setCreating(true)}><Icon name="compose" /></button>
+        </div>
+      </header>
       <div className="chips" role="toolbar" aria-label="Chat folders">
         {FOLDERS.map(([f, label]) => (
           <button key={f} className="chip" aria-pressed={folder === f} onClick={() => setFolder(f)}>
@@ -71,7 +83,7 @@ export function Chats() {
       {items === null ? <div className="center"><Spinner /></div> :
         visible.length === 0 ? (
           <Empty title={folder === 'all' ? 'No chats yet' : 'Nothing here'}>
-            {folder === 'all' ? <>Add friends on the <Link to="/friends">Friends</Link> tab, then tap a friend to start chatting.</> : null}
+            {folder === 'all' ? <>Find friends under <Link to="/people">People</Link>, then tap a friend to start chatting.</> : null}
           </Empty>
         ) : (
           <div className="list">
@@ -102,7 +114,7 @@ export function Chats() {
                         {c.kind === 'direct' && c.other_user_id && <StreakBadge streak={streaks.get(c.other_user_id)} />}
                       </span>
                       <span className={labelClass(c)}>
-                        <span className="label-dot" />{c.label} · {relativeTime(c.last_activity)}
+                        <span className="label-dot" />{c.label} · <time dateTime={c.last_activity} title={relativeTime(c.last_activity)}>{shortTime(c.last_activity)}</time>
                       </span>
                     </span>
                   </Link>
@@ -115,7 +127,7 @@ export function Chats() {
       <p className="muted small" style={{ textAlign: 'center', marginTop: 20 }}>Message previews are never shown here, by design.</p>
       {menuFor && <ChatMenu item={menuFor} items={items ?? []} onClose={() => setMenuFor(null)}
         onDone={async (m) => { setMenuFor(null); showToast(m); await reload(); }} onError={showToast} />}
-      {creating && <NewGroup onClose={() => setCreating(false)} />}
+      {creating && <NewChat onClose={() => setCreating(false)} />}
       {searching && <SearchSheet title="Search all chats" onClose={() => setSearching(false)}
         nameOf={(uid, conv) => { const t = (items ?? []).find((c) => c.conversation_id === conv)?.title ?? 'Chat'; return uid === profile?.id ? `You in ${t}` : t; }}
         onPick={(h) => { setSearching(false); nav(`/chats/${h.conversation_id}?m=${h.message_id}`); }} />}
@@ -149,7 +161,8 @@ function ChatMenu({ item, items, onClose, onDone, onError }:
   );
 }
 
-function NewGroup({ onClose }: { onClose: () => void }) {
+/** New conversation: one friend opens your chat with them; two or more (with a name) make a group. */
+function NewChat({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [friends, setFriends] = useState<Array<{ user_id: string; username: string; display_name: string; nickname: string | null }> | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -157,31 +170,42 @@ function NewGroup({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { rpc<typeof friends>('list_friends').then(setFriends).catch((e) => setError(errorMessage(e))); }, []);
+  const single = picked.size === 1 && !name.trim();
+  const one = single ? (friends ?? []).find((f) => picked.has(f.user_id)) : undefined;
 
-  async function create() {
+  async function go() {
     if (busy) return;
     setBusy(true); setError(null);
-    try { const id = await rpc<string>('create_group', { p_name: name.trim(), p_members: [...picked] }); nav(`/chats/${id}`); }
-    catch (e) { setError(errorMessage(e)); setBusy(false); }
+    try {
+      const id = single
+        ? await rpc<string>('create_direct_conversation', { p_friend: [...picked][0] })
+        : await rpc<string>('create_group', { p_name: name.trim(), p_members: [...picked] });
+      nav(`/chats/${id}`);
+    } catch (e) { setError(errorMessage(e)); setBusy(false); }
   }
   return (
-    <Sheet label="New group" onClose={onClose}>
-        <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>New group</h2>
+    <Sheet label="New chat" onClose={onClose}>
+        <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>New chat</h2>
         {error && <Banner>{error}</Banner>}
-        <label className="field" htmlFor="group-name"><span className="field-label">Group name</span>
-          <input id="group-name" value={name} maxLength={50} onChange={(e) => setName(e.target.value)} placeholder="Weekend crew" /></label>
-        <span className="field-label" style={{ margin: '8px 4px 0' }}>Friends ({picked.size} selected, up to 31)</span>
-        {friends === null ? <Spinner /> : friends.length === 0 ? <p className="muted small">Add friends first.</p> :
-          friends.map((f) => (
-            <label key={f.user_id} className="list-item">
+        <span className="field-label" style={{ margin: '0 4px' }}>Friends ({picked.size} selected, up to 31)</span>
+        {friends === null ? <Spinner /> : friends.length === 0 ? (
+          <p className="muted small" style={{ margin: 4 }}>No friends yet. <Link to="/people?tab=discover" onClick={onClose}>Find people</Link> first.</p>
+        ) : friends.map((f) => (
+            <label key={f.user_id} className="list-item pick-row">
               <input type="checkbox" checked={picked.has(f.user_id)} onChange={(e) => {
                 const next = new Set(picked); if (e.target.checked) next.add(f.user_id); else next.delete(f.user_id); setPicked(next);
               }} />
-              <Avatar name={f.nickname ?? f.display_name} size={34} />
-              <span className="grow truncate">{f.nickname ?? f.display_name} <span className="muted small">@{f.username}</span></span>
+              <Avatar name={f.nickname ?? f.display_name} size={36} />
+              <span className="grow" style={{ minWidth: 0 }}>
+                <span className="list-title truncate" style={{ display: 'block' }}>{f.nickname ?? f.display_name}</span>
+                <span className="list-sub"><span className="truncate">@{f.username}</span></span>
+              </span>
             </label>
           ))}
-        <Button busy={busy} disabled={!name.trim() || picked.size === 0 || picked.size > 31} onClick={create}>Create group</Button>
+        <label className="field" htmlFor="group-name"><span className="field-label">Group name {picked.size < 2 ? '(to make a group)' : ''}</span>
+          <input id="group-name" value={name} maxLength={50} onChange={(e) => setName(e.target.value)} placeholder="Weekend crew" /></label>
+        <Button busy={busy} disabled={picked.size === 0 || picked.size > 31 || (!single && !name.trim())} onClick={go}>
+          {single ? `Chat with ${one ? (one.nickname ?? one.display_name) : 'friend'}` : 'Create group'}</Button>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
     </Sheet>
   );

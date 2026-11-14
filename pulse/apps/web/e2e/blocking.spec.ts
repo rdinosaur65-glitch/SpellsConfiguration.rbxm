@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { befriendUi, signIn, signUp, uniq } from './helpers';
+import { befriendUi, openPeople, signIn, signUp, uniq } from './helpers';
 
 const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const sql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
@@ -46,7 +46,7 @@ test('removing a blocked chat hides it only for the person who pressed ×', asyn
 
   // Ada blocks Bea: Ada keeps the chat, marked Blocked, with an ×. Bea cannot see or use it.
   await a.getByRole('link', { name: 'Back to chats' }).click();
-  await nav(a, 'Friends').click();
+  await openPeople(a, 'Friends');
   await a.getByTestId('friend-row').getByRole('button', { name: `More options for ${ub}` }).click();
   a.once('dialog', (d) => d.accept());
   await a.getByRole('button', { name: 'Block' }).click();
@@ -75,7 +75,7 @@ test('removing a blocked chat hides it only for the person who pressed ×', asyn
   await expect(a.getByText(`Unblocked @${ub}`)).toBeVisible();
   await chats(a);
   await expect(a.getByText('No chats yet')).toBeVisible();
-  await nav(b, 'Friends').click();
+  await openPeople(b);
   await chats(b);
   await b.getByTestId('chat-row').first().getByRole('link').click();
   await expect(b.getByTestId('messages')).toContainText('keep this one');
@@ -83,7 +83,7 @@ test('removing a blocked chat hides it only for the person who pressed ×', asyn
 
   // Now Bea blocks Ada and removes it on her side — independently of Ada's setting.
   await b.getByRole('link', { name: 'Back to chats' }).click();
-  await nav(b, 'Friends').click();
+  await openPeople(b, 'Discover');
   await b.getByLabel('Search by username').fill(ua);
   await b.getByRole('button', { name: `More options for ${ua}` }).click();
   b.once('dialog', (d) => d.accept());

@@ -80,13 +80,21 @@ export async function signIn(page: Page, email: string, password = PASSWORD): Pr
 
 const mainNav = (p: Page, name: string) => p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: new RegExp(`^${name}`) });
 
+/** Opens People from the Chats header (there is no Friends tab), optionally on one section. */
+export async function openPeople(p: Page, tab?: 'Discover' | 'Requests' | 'Friends'): Promise<void> {
+  await mainNav(p, 'Chats').click();
+  await p.getByTestId('people-button').click();
+  await expect(p.getByRole('tablist', { name: 'People' })).toBeVisible();
+  if (tab) await p.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+}
+
 /** `a` sends a friend request to username `ub`; page `b` accepts it. */
 export async function befriendUi(a: Page, b: Page, ub: string, aDisplayName: string): Promise<void> {
-  await mainNav(a, 'Friends').click();
+  await openPeople(a, 'Discover');
   await a.getByLabel('Search by username').fill(ub);
   await a.getByRole('button', { name: `Add @${ub}` }).click();
   await expect(a.getByText('Requested')).toBeVisible();
-  await mainNav(b, 'Friends').click();
+  await openPeople(b);                                   // waiting requests open first
   await b.getByTestId('incoming-request').filter({ hasText: aDisplayName }).getByRole('button', { name: 'Accept' }).click();
   await expect(b.getByTestId('friend-row').filter({ hasText: aDisplayName })).toBeVisible();
 }

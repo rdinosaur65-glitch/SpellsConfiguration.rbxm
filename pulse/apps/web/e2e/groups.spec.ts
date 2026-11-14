@@ -13,10 +13,10 @@ test('group: create, roles, remove, rename, hand over ownership and leave', asyn
 
   // Olga creates the group from the Chats tab.
   await nav(a, 'Chats').click();
-  await a.getByRole('button', { name: 'New group' }).click();
+  await a.getByRole('button', { name: 'New chat or group' }).click();
   await a.getByLabel('Group name').fill('Weekend crew');
-  await a.getByRole('dialog', { name: 'New group' }).getByRole('checkbox').nth(0).check();
-  await a.getByRole('dialog', { name: 'New group' }).getByRole('checkbox').nth(1).check();
+  await a.getByRole('dialog', { name: 'New chat' }).getByRole('checkbox').nth(0).check();
+  await a.getByRole('dialog', { name: 'New chat' }).getByRole('checkbox').nth(1).check();
   await a.getByRole('button', { name: 'Create group' }).click();
   await expect(a.getByTestId('chat-title')).toHaveText('Weekend crew');
   await a.getByLabel('Message').fill('welcome!');

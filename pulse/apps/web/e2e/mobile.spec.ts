@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { devices, expect, test, type Page } from '@playwright/test';
-import { befriendUi, signUp, uniq } from './helpers';
+import { befriendUi, openPeople, signUp, uniq } from './helpers';
 
 const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const sql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
@@ -32,7 +32,7 @@ test('long names never push buttons off a small phone screen', async ({ browser 
     const box = (await p.getByRole('button', { name }).first().boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(width);
   };
-  await nav(a, 'Friends').click();
+  await openPeople(a, 'Friends');
   await inside(a, `More options for ${ub}`);
   await nav(a, 'Chats').click();
   await inside(a, /^Options for /);
@@ -44,7 +44,7 @@ test('long names never push buttons off a small phone screen', async ({ browser 
 
 test('tall sheets scroll inside a short screen', async ({ browser }) => {
   const { ca, cb, a, ub } = await pair(browser, { viewport: { width: 375, height: 548 }, isMobile: true, hasTouch: true });
-  await nav(a, 'Friends').click();
+  await openPeople(a, 'Friends');
   await a.getByTestId('friend-row').getByRole('button', { name: `More options for ${ub}` }).click();
   await a.getByRole('button', { name: 'Report' }).click();
   const sheet = a.getByRole('dialog');

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { befriendUi, signUp, uniq } from './helpers';
+import { befriendUi, openPeople, signUp, uniq } from './helpers';
 
 const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const sql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
@@ -50,7 +50,7 @@ test('streaks: both friends Snap the same day → 🔥1; ⌛ near the end; a mil
   await expect(chatRow(b, 'Sky').getByTestId('streak')).toHaveAttribute('aria-label', '1-day streak');
   await a.reload();
   await expect(chatRow(a, 'Bo').getByTestId('streak')).toHaveAttribute('aria-label', '1-day streak');
-  await nav(a, 'Friends').click();
+  await openPeople(a, 'Friends');
   await expect(a.getByTestId('friend-row').filter({ hasText: 'Bo' }).getByTestId('streak')).toContainText('1');
   await nav(a, 'Chats').click();
   await chatRow(a, 'Bo').getByRole('link').click();
@@ -92,7 +92,7 @@ test('streaks: both friends Snap the same day → 🔥1; ⌛ near the end; a mil
   await expect(b.getByTestId('streak-milestone')).toContainText('10 days of Snaps with Sky');
 
   // Removing the friend ends the streak for both.
-  await nav(a, 'Friends').click();
+  await openPeople(a, 'Friends');
   await a.getByRole('button', { name: `More options for ${ub}` }).click();
   a.once('dialog', (d) => d.accept());
   await a.getByRole('button', { name: 'Remove friend' }).click();

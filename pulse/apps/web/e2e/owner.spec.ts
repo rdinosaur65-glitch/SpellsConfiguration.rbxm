@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { emailText, enableTotp, freshTotp, PASSWORD, signUp, uniq } from './helpers';
+import { emailText, enableTotp, freshTotp, openPeople, PASSWORD, signUp, uniq } from './helpers';
 
 const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const sql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
@@ -23,7 +23,7 @@ test('owner panel: a report leads to a suspension, which takes effect at once an
   await enableTotp(o);
 
   // A stranger reports the troll from search results.
-  await nav(r, 'Friends').click();
+  await openPeople(r, 'Discover');
   await r.getByLabel('Search by username').fill(uu);
   await r.getByRole('button', { name: `More options for ${uu}` }).click();
   await r.getByRole('button', { name: 'Report' }).click();

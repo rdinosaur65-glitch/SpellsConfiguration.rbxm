@@ -12,7 +12,7 @@ import { Chat } from './screens/Chat';
 const GroupInfo = lazy(() => import('./screens/GroupInfo').then((m) => ({ default: m.GroupInfo })));
 const Admin = lazy(() => import('./screens/Admin').then((m) => ({ default: m.Admin })));
 const Privacy = lazy(() => import('./screens/Privacy').then((m) => ({ default: m.Privacy })));
-import { Friends } from './screens/Friends';
+import { People } from './screens/People';
 const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
 const Camera = lazy(() => import('./screens/Camera').then((m) => ({ default: m.Camera })));
 
@@ -116,7 +116,9 @@ export function App() {
         <Route path="/chats" element={<Chats />} />
         <Route path="/chats/:id" element={<Chat />} />
         <Route path="/chats/:id/info" element={<GroupInfo />} />
-        <Route path="/friends" element={<Friends />} />
+        <Route path="/people" element={<People />} />
+        {/* Old address (friend-request notifications, bookmarks): the requests list. */}
+        <Route path="/friends" element={<Navigate to="/people?tab=requests" replace />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/privacy" element={<Privacy />} />

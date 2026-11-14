@@ -1,8 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { signUp, uniq } from './helpers';
+import { openPeople, signUp, uniq } from './helpers';
 
 const nav = (p: Page, name: string) => p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: new RegExp(`^${name}`) });
-async function openFriends(p: Page) { await nav(p, 'Friends').click(); }
 
 test('two people become friends and chat in real time', async ({ browser }) => {
   const ctxA = await browser.newContext(); const ctxB = await browser.newContext();
@@ -12,14 +11,16 @@ test('two people become friends and chat in real time', async ({ browser }) => {
   await signUp(b, ub, 'Bob');
 
   // Amy finds Bob by partial username and sends a request.
-  await openFriends(a);
+  await openPeople(a, 'Discover');
   await a.getByLabel('Search by username').fill(ub.slice(0, 8));
   await a.getByRole('button', { name: `Add @${ub}` }).click();
   await expect(a.getByText('Requested')).toBeVisible();
 
-  // Bob sees it arrive live (badge + list) and accepts.
-  await expect(nav(b, 'Friends').locator('.nav-badge')).toHaveText('1');
-  await openFriends(b);
+  // Bob sees it arrive live (dot on Chats, badge on People) and accepts.
+  await nav(b, 'Chats').click();
+  await expect(nav(b, 'Chats').locator('.nav-dot')).toBeVisible();
+  await expect(b.getByTestId('people-button')).toHaveAttribute('aria-label', 'People, 1 friend request');
+  await openPeople(b);
   const req = b.getByTestId('incoming-request');
   await expect(req).toContainText('Amy');
   await req.getByRole('button', { name: 'Accept' }).click();
@@ -86,7 +87,7 @@ test('two people become friends and chat in real time', async ({ browser }) => {
   // Blocking removes the friendship. The blocker keeps the chat, marked Blocked, with an ×
   // that removes it from their own list; the blocked person no longer sees it at all.
   await a.getByRole('link', { name: 'Back to chats' }).click();
-  await openFriends(a);
+  await openPeople(a, 'Friends');
   await a.getByRole('button', { name: `More options for ${ub}` }).click();
   a.once('dialog', (d) => d.accept());
   await a.getByRole('button', { name: 'Block' }).click();

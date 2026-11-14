@@ -22,6 +22,7 @@ function ShellInner() {
   const chatMatch = useMatch('/chats/:id');
   const infoMatch = useMatch('/chats/:id/info');
   const inConversation = chatMatch !== null || infoMatch !== null;
+  const peopleMatch = useMatch('/people') !== null;   // People belongs to Chats
 
   return (
     <div className="app">
@@ -36,8 +37,9 @@ function ShellInner() {
       {!inConversation && <nav className="nav" aria-label="Main">
         <div className="nav-inner">
           <NavLink to="/camera"><Icon name="camera" />Camera</NavLink>
-          <NavLink to="/chats"><Icon name="chat" />Chats{unread > 0 && <span className="nav-badge" aria-label={`${unread} unread`}>{unread}</span>}</NavLink>
-          <NavLink to="/friends"><Icon name="friends" />Friends{incoming > 0 && <span className="nav-badge" aria-label={`${incoming} requests`}>{incoming}</span>}</NavLink>
+          <NavLink to="/chats" className={({ isActive }) => (isActive || peopleMatch ? 'active' : undefined)}><Icon name="chat" />Chats
+            {unread > 0 ? <span className="nav-badge" aria-label={`${unread} unread`}>{unread}</span>
+              : incoming > 0 ? <span className="nav-dot" aria-label={`${incoming} friend request${incoming > 1 ? 's' : ''}`} /> : null}</NavLink>
           <NavLink to="/settings"><Icon name="settings" />Settings</NavLink>
         </div>
       </nav>}

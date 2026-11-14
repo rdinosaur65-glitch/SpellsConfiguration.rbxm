@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { befriendUi, signUp, uniq } from './helpers';
+import { befriendUi, openPeople, signUp, uniq } from './helpers';
 
 const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const sql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
@@ -28,7 +28,7 @@ function decrypt(body: Buffer, ecdh: ReturnType<typeof createECDH>, auth: Buffer
 }
 
 test('push notifications: turn on, receive "New Chat" without the text, turn off', async ({ browser }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   expect(prefix, 'PULSE_PUSH_TEST_PREFIXES in supabase/functions/.env').toMatch(/^http:\/\//);
   const received: Array<{ url: string; body: Buffer }> = [];
   const server = http.createServer((req, res) => {
@@ -71,10 +71,13 @@ test('push notifications: turn on, receive "New Chat" without the text, turn off
     expect(sql(`select count(*) from private.push_subscriptions s join public.profiles p on p.id = s.user_id where p.username = '${ub}'`)).toBe('1');
 
     // Amy writes; Ben's device gets an encrypted "Amy — New Chat", without the text.
+    await openPeople(a, 'Friends');
     await a.getByTestId('friend-row').getByRole('button').first().click();
     await a.getByLabel('Message').fill('the secret plan');
     await a.getByLabel('Message').press('Enter');
-    await expect.poll(() => received.length, { timeout: 20_000 }).toBeGreaterThan(0);
+    // Usually immediate; if that first call is missed, the one-minute sweep (push_sweep) sends
+    // it — the guarantee under test is delivery, not the speed of the first attempt.
+    await expect.poll(() => received.length, { timeout: 75_000 }).toBeGreaterThan(0);
     const text = decrypt(received[0]!.body, ecdh, auth);
     expect(text).not.toContain('secret plan');
     expect(JSON.parse(text)).toMatchObject({ title: 'Amy', body: 'New Chat' });

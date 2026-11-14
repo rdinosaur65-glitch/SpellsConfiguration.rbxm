@@ -86,12 +86,14 @@ export function useToast(): [ReactNode, (msg: string) => void] {
   return [msg ? <div className="toast" role="status">{msg}</div> : null, setMsg];
 }
 
-type IconName = 'camera' | 'chat' | 'friends' | 'settings' | 'back' | 'send' | 'search' | 'plus' | 'image' |
+type IconName = 'camera' | 'chat' | 'friends' | 'person-add' | 'compose' | 'settings' | 'back' | 'send' | 'search' | 'plus' | 'image' |
   'check' | 'close' | 'flip' | 'more' | 'lock' | 'mic';
 const PATHS: Record<IconName, string> = {
   camera: 'M4 8h3l2-3h6l2 3h3v11H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   chat: 'M4 5h16v11H9l-5 4z',
   friends: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5 M16 4.5a3 3 0 0 1 0 6 M18 14.5c2 .7 3.2 2.5 3.5 5.5',
+  'person-add': 'M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M3.5 20c.8-3.6 3.4-5.5 6.5-5.5 2 0 3.8.8 5 2.2 M19 13v7 M15.5 16.5h7',
+  compose: 'M5 19h4l9.5-9.5-4-4L5 15z M13 7l4 4 M5 19h14',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19 12l2-1.5-2-3.5-2.4.7-1.6-1L14.5 4h-5L9 6.7l-1.6 1L5 7 3 10.5 5 12l-2 1.5L5 17l2.4-.7 1.6 1 .5 2.7h5l.5-2.7 1.6-1 2.4.7 2-3.5z',
   back: 'M15 5l-7 7 7 7',
   send: 'M4 12l16-8-6 16-3-7z',

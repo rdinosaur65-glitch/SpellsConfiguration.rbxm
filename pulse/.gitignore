@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env.local
+*.local
+supabase/.branches
+supabase/.temp
+supabase/signing_keys.json
+apps/web/test-results/
+apps/web/playwright-report/

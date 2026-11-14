@@ -62,3 +62,11 @@ test('password reset by email', async ({ page }) => {
   await signIn(page, email, 'brand-new-pass-9');
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 });
+
+test('privacy notice is reachable before signing up', async ({ page }) => {
+  await page.goto('/signup');
+  await page.getByRole('link', { name: 'privacy notice and rules' }).click();
+  await expect(page.getByRole('heading', { name: 'Privacy and rules' })).toBeVisible();
+  await expect(page.getByText(/cannot read your chats, Snaps or photos/)).toBeVisible();
+  await expect(page.getByText(/not end-to-end encrypted/)).toBeVisible();
+});

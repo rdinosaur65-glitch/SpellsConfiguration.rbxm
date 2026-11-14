@@ -436,7 +436,8 @@ export function Chat() {
       )}
 
       {showExpiry && conv && (
-        <Sheet label="Disappearing messages" onClose={() => setShowExpiry(false)}>
+        <Sheet label="Chat settings" onClose={() => setShowExpiry(false)}>
+          {conv.kind === 'group' && <Link className="sheet-item" to={`/chats/${convId}/info`}>Group info and members</Link>}
           <p className="muted small" style={{ margin: '4px 4px 8px' }}>Disappearing messages{conv.kind === 'group' ? ' (group admins can change this)' : ''}. A change applies to new messages.</p>
           {(Object.keys(EXPIRY_TEXT) as Expiry[]).map((mode) => (
             <button key={mode} className="sheet-item" aria-pressed={conv.expiry_mode === mode} onClick={async () => {

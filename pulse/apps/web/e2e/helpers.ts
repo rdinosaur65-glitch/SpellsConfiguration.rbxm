@@ -55,3 +55,16 @@ export async function signIn(page: Page, email: string, password = PASSWORD): Pr
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
 }
+
+const mainNav = (p: Page, name: string) => p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: new RegExp(`^${name}`) });
+
+/** `a` sends a friend request to username `ub`; page `b` accepts it. */
+export async function befriendUi(a: Page, b: Page, ub: string, aDisplayName: string): Promise<void> {
+  await mainNav(a, 'Friends').click();
+  await a.getByLabel('Search by username').fill(ub);
+  await a.getByRole('button', { name: `Add @${ub}` }).click();
+  await expect(a.getByText('Requested')).toBeVisible();
+  await mainNav(b, 'Friends').click();
+  await b.getByTestId('incoming-request').filter({ hasText: aDisplayName }).getByRole('button', { name: 'Accept' }).click();
+  await expect(b.getByTestId('friend-row').filter({ hasText: aDisplayName })).toBeVisible();
+}

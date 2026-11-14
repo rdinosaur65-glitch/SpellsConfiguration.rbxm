@@ -15,7 +15,9 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 |---|---|---|
 | €0 infrastructure research & decision | ✅ | `INFRASTRUCTURE_ZERO_COST.md` |
 | Architecture & stack justification | ✅ | `ARCHITECTURE.md` |
-| Environment variables documented | ✅ | `ENVIRONMENT.md`, `.env.example` |
+| Environment variables documented | ✅ | `ENVIRONMENT.md`, `.env.example`; owner walkthrough in `LAUNCH_GUIDE.md` |
+| Privacy notice and house rules page | ✅ | `/privacy`, linked from sign-up and Settings (owner should review) |
+| Bot protection (Turnstile) | 🟡 | Widget on sign-up/sign-in/reset/resend/re-auth when `VITE_TURNSTILE_SITE_KEY` is set; not exercised against Cloudflare here |
 | Security model | ✅ | `SECURITY_MODEL.md` |
 | Migrations (15) apply cleanly | ✅ | shim + real local Supabase |
 | RLS on every table, function lockdown | ✅ | tests 10, 60, 80 (catalog checks incl. 2FA + account-state gates, definer RPCs check the caller, indexed FKs) |
@@ -57,8 +59,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Requests: send/accept/decline/cancel, mutual auto-accept, live updates | ✅ | UI + e2e |
 | Remove friend, block (also from requests/search), unblock list, report user | ✅ | UI; block in e2e; blocks with an existing chat tested (75) |
 | Private nicknames + colours | ✅ | UI |
-| Direct & group conversations | ✅ | DB tested; direct chats in e2e; new-group sheet not yet in e2e |
-| Group admin UI (roles, add/remove, transfer, leave) | 🟠 | RPCs tested; UI not built |
+| Direct & group conversations | ✅ | DB tested; direct chats and the new-group sheet in e2e |
+| Group admin UI (roles, add/remove, transfer, leave, rename, report, shared photos) | ✅ | e2e (create → roles → remove → rename → transfer → leave) |
 | Text messages, realtime, optimistic + idempotent retry | ✅ | e2e |
 | Chat list with status labels, no previews; folders; pins; mute | ✅ | e2e (labels) |
 | Read status & disappearing modes (after view / 24 h / 7 d / never) | ✅ | e2e: mode switch announced in chat, Delivered → Opened live; mode fixed per message (75) |
@@ -91,7 +93,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 |---|---|
 | Reports (user/message/group) with evidence snapshots | ✅ (user + message reporting in UI) |
 | Owner panel RPCs; ban enforcement; account deletion workflow | ✅ (deletion in Settings UI) |
-| Calls, push, map/location, owner panel UI | ⬜ |
+| Owner panel UI (usage, reports, suspend/ban/restore/delete, audit log) | ✅ (e2e) |
+| Calls, push, map/location | ⬜ |
 
 ## Phase 7 — Hardening
 Security review: 🟠 → multi-agent adversarial review done (report 3): 97 confirmed findings, all
@@ -99,6 +102,6 @@ fixed or documented with tests. Still owed: a human review before inviting real 
 Known limitations (documented, not fixable at €0 or in SQL): typing-indicator payloads are
 client-supplied (any member can fake another member typing); a removed member keeps an
 already-joined broadcast channel until their token expires (≤1 h); the Turnstile widget is
-not rendered by the web app yet; failed attempts inside a rate-limited RPC roll back their
+implemented but not exercised against Cloudflare from this sandbox; failed attempts inside a rate-limited RPC roll back their
 counter (limits count successful calls). `npm audit` reports moderate advisories in
 **build-time-only** PWA tooling (workbox-build → glob/minimatch); nothing shipped to browsers.

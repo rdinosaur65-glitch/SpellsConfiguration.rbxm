@@ -233,3 +233,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid; place-items: center; cursor: pointer; flex: none; }
 .timer-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .bubble-media { padding: 4px; background: transparent !important; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.photo-grid .chat-photo, .photo-grid .media-placeholder { width: 100%; max-width: none; aspect-ratio: 1; height: auto; max-height: none; border-radius: 8px; }
+a.sheet-item { display: flex; align-items: center; justify-content: center; text-decoration: none; color: inherit; }
+.meter { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.meter > div { height: 100%; }
+.legal-page ul { padding-left: 20px; margin: 0; display: grid; gap: 6px; }
+.legal-page p { margin: 6px 0; }
+.captcha { min-height: 65px; display: flex; justify-content: center; }

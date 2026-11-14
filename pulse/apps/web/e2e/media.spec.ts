@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { signUp, uniq } from './helpers';
+import { befriendUi, signUp, uniq } from './helpers';
 
 // Needs the Edge Functions served: npx supabase functions serve --env-file supabase/functions/.env
 const nav = (p: Page, name: string) => p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: new RegExp(`^${name}`) });
@@ -8,14 +8,6 @@ const nav = (p: Page, name: string) => p.getByRole('navigation', { name: 'Main' 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGN44NAARwzEcQCqUhoBIWH54wAAAABJRU5ErkJggg==', 'base64');
 
-async function befriend(a: Page, b: Page, ub: string) {
-  await nav(a, 'Friends').click();
-  await a.getByLabel('Search by username').fill(ub);
-  await a.getByRole('button', { name: `Add @${ub}` }).click();
-  await nav(b, 'Friends').click();
-  await b.getByTestId('incoming-request').getByRole('button', { name: 'Accept' }).click();
-  await expect(b.getByTestId('friend-row')).toHaveCount(1);
-}
 
 async function imageLoaded(p: Page, testId: string) {
   const img = p.getByTestId(testId).last();
@@ -29,7 +21,7 @@ test('photos in chat and Snaps from the camera, through media-url', async ({ bro
   const a = await ctxA.newPage(); const b = await ctxB.newPage();
   const ua = uniq('pia_'); const ub = uniq('pib_');
   await signUp(a, ua, 'Pia'); await signUp(b, ub, 'Ben');
-  await befriend(a, b, ub);
+  await befriendUi(a, b, ub, 'Pia');
 
   // Ben sends a photo; Pia sees it (fetched once through a ≤60 s signed URL).
   await b.getByTestId('friend-row').getByRole('button').first().click();

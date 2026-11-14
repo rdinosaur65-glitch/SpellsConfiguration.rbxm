@@ -9,6 +9,9 @@ import { AccountBlocked, ForgotPassword, NotConfigured, ResetPassword, SignIn, S
 import { MfaChallenge } from './screens/MfaChallenge';
 import { Chats } from './screens/Chats';
 import { Chat } from './screens/Chat';
+import { GroupInfo } from './screens/GroupInfo';
+import { Admin } from './screens/Admin';
+import { Privacy } from './screens/Privacy';
 import { Friends } from './screens/Friends';
 import { Settings } from './screens/Settings';
 import { Camera } from './screens/Camera';
@@ -91,6 +94,7 @@ export function App() {
         <Route path="/forgot" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/signin" element={<SignIn />} />
+        <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<Navigate to="/signin" replace state={{ from: location.pathname }} />} />
       </Routes>
     );
@@ -106,8 +110,11 @@ export function App() {
         <Route path="/camera" element={<Camera />} />
         <Route path="/chats" element={<Chats />} />
         <Route path="/chats/:id" element={<Chat />} />
+        <Route path="/chats/:id/info" element={<GroupInfo />} />
         <Route path="/friends" element={<Friends />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<Navigate to="/chats" replace />} />
       </Route>
     </Routes>

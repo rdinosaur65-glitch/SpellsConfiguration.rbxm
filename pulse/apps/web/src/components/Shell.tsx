@@ -16,7 +16,9 @@ function ShellInner() {
   const incoming = requests.filter((r) => r.direction === 'incoming').length;
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
   // Conversations are full-screen: the composer takes the place of the tab bar.
-  const inConversation = useMatch('/chats/:id') !== null;
+  const chatMatch = useMatch('/chats/:id');
+  const infoMatch = useMatch('/chats/:id/info');
+  const inConversation = chatMatch !== null || infoMatch !== null;
 
   return (
     <div className="app">

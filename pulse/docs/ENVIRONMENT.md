@@ -49,7 +49,9 @@ update private.platform_config set registration_cap = 50,
 - Bot protection (Auth → Bot and Abuse Protection): enable **Cloudflare Turnstile** (free)
   for sign-up, password reset and resend. The hosted email cap is project-wide; without a
   captcha, anyone holding the public anon key can use it up and block every confirmation
-  and reset email. (The web app does not render the Turnstile widget yet — see CHECKLIST.)
+  and reset email. Put the Turnstile **site key** in the web app's `VITE_TURNSTILE_SITE_KEY`
+  (Cloudflare Pages → environment variables) and the **secret key** in the Supabase dashboard.
+  Turn both on together: with captcha on and no site key, nobody can sign in.
 
 ### Email delivery (required before inviting anyone)
 Supabase's built-in mailer only delivers to members of the project's team and is heavily

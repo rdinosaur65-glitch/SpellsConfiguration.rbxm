@@ -38,6 +38,7 @@ cd apps/web && npx playwright test    # end-to-end (builds the app, needs the lo
 - `docs/CHECKLIST.md`: every feature with an honest status
 
 ## Deploy (owner, when ready — all free)
+Step by step, with every setting: **`docs/LAUNCH_GUIDE.md`**. Summary:
 1. Supabase project → apply `supabase/migrations/*.sql` in order (`npx supabase db push`).
    Never apply `supabase/tests/00_supabase_shim.sql` to a real project.
 2. Copy the Auth settings in `docs/ENVIRONMENT.md`: confirmations, TOTP, security emails,

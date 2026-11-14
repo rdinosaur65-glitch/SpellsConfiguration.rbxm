@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
 import { Banner, Button, Field } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { Captcha, captchaEnabled } from '../components/Captcha';
 
 const redirectTo = () => `${window.location.origin}/`;
 const PASSWORD_HINT = 'At least 8 characters, with letters and numbers.';
@@ -36,12 +37,16 @@ export function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [unconfirmed, setUnconfirmed] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const resetCaptcha = () => { setCaptcha(null); setCaptchaKey((k) => k + 1); };   // tokens are single-use
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null); setInfo(null); setUnconfirmed(false);
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captcha ?? undefined } });
     setBusy(false);
+    resetCaptcha();
     if (error) {
       setError(errorMessage(error));
       setUnconfirmed(error.message === 'Email not confirmed' || (error as { code?: string }).code === 'email_not_confirmed');
@@ -49,7 +54,8 @@ export function SignIn() {
   }
 
   async function resend() {
-    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: redirectTo() } });
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: redirectTo(), captchaToken: captcha ?? undefined } });
+    resetCaptcha();
     if (error) setError(errorMessage(error)); else setInfo('Confirmation email sent again.');
   }
 
@@ -63,7 +69,8 @@ export function SignIn() {
                value={email} onChange={(e) => setEmail(e.target.value)} />
         <Field label="Password" type="password" name="password" autoComplete="current-password" required
                value={password} onChange={(e) => setPassword(e.target.value)} />
-        <Button type="submit" busy={busy} disabled={!email || !password}>Sign in</Button>
+        <Captcha key={captchaKey} onToken={setCaptcha} />
+        <Button type="submit" busy={busy} disabled={!email || !password || (captchaEnabled && !captcha)}>Sign in</Button>
         <div className="auth-alt"><Link to="/forgot">Forgot password?</Link></div>
       </form>
       <p className="auth-alt">New here? <Link to="/signup">Create an account</Link></p>
@@ -80,6 +87,8 @@ export function SignUp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const u = validateUsername(username);
   const usernameError = touched && username && !u.ok ? errorMessage({ message: u.error }) : null;
@@ -96,9 +105,11 @@ export function SignUp() {
       options: {
         emailRedirectTo: redirectTo(),
         data: { username: u.value, display_name: displayName.trim() || u.value },
+        captchaToken: captcha ?? undefined,
       },
     });
     setBusy(false);
+    setCaptcha(null); setCaptchaKey((k) => k + 1);
     if (error) { setError(errorMessage(error)); return; }
     // With confirmations on, Supabase returns no session until the link is clicked.
     if (!data.session) setSentTo(email.trim());
@@ -107,8 +118,8 @@ export function SignUp() {
   if (sentTo) {
     return (
       <AuthLayout subtitle="Almost there">
-        <Banner kind="info">We sent a confirmation link to <strong>{sentTo}</strong>. Open it on this device to finish signing up.</Banner>
-        <p className="legal">Unconfirmed sign-ups are removed after 48 hours and the username is released.</p>
+        <Banner kind="info">We sent a confirmation link to <strong>{sentTo}</strong>. Open it to finish signing up (any device works).</Banner>
+        <p className="legal">The link expires in an hour. Unconfirmed sign-ups are removed after 6 hours and the username is released.</p>
         <p className="auth-alt"><Link to="/signin">Back to sign in</Link></p>
       </AuthLayout>
     );
@@ -129,8 +140,10 @@ export function SignUp() {
         <Field label="Password" type="password" name="new-password" autoComplete="new-password" required
                value={password} onChange={(e) => setPassword(e.target.value)} onBlur={() => setTouched(true)}
                hint={PASSWORD_HINT} error={passwordError} />
-        <Button type="submit" busy={busy} disabled={!canSubmit}>Create account</Button>
-        <p className="legal">PULSE is friends-only: nobody can see your profile unless you accept them.</p>
+        <Captcha key={captchaKey} onToken={setCaptcha} />
+        <Button type="submit" busy={busy} disabled={!canSubmit || (captchaEnabled && !captcha)}>Create account</Button>
+        <p className="legal">PULSE is friends-only: nobody can see your profile unless you accept them.
+          By creating an account you agree to the <Link to="/privacy">privacy notice and rules</Link>.</p>
       </form>
       <p className="auth-alt">Already have an account? <Link to="/signin">Sign in</Link></p>
     </AuthLayout>
@@ -142,12 +155,16 @@ export function ForgotPassword() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password` });
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(),
+      { redirectTo: `${window.location.origin}/reset-password`, captchaToken: captcha ?? undefined });
     setBusy(false);
+    setCaptcha(null); setCaptchaKey((k) => k + 1);
     // Same message whether or not the address exists (no account enumeration), but never
     // claim an email is on its way when the request did not reach the server.
     const code = (error as { code?: string; status?: number } | null);
@@ -166,7 +183,8 @@ export function ForgotPassword() {
           {error && <Banner>{error}</Banner>}
           <Field label="Email" type="email" name="email" autoComplete="email" required value={email}
                  onChange={(e) => setEmail(e.target.value)} />
-          <Button type="submit" busy={busy} disabled={!email.includes('@')}>Send reset link</Button>
+          <Captcha key={captchaKey} onToken={setCaptcha} />
+          <Button type="submit" busy={busy} disabled={!email.includes('@') || (captchaEnabled && !captcha)}>Send reset link</Button>
         </form>
       )}
       <p className="auth-alt"><Link to="/signin">Back to sign in</Link></p>

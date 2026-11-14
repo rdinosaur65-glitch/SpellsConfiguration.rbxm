@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { formatBytes, nextUsernameChangeAt, storageState, validateUsername } from '@pulse/domain';
 import { rpc, supabase } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
@@ -8,6 +9,7 @@ import type { Appearance } from '../lib/types';
 import { Avatar, Banner, Button, Field, Header, Spinner, Toggle, useToast } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { setStepUp } from '../lib/stepup';
+import { Captcha, captchaEnabled } from '../components/Captcha';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (<><h2 className="section-title">{title}</h2><div className="card">{children}</div></>);
@@ -41,6 +43,7 @@ export function Settings() {
         <span className="muted" data-testid="my-username">@{profile.username}</span>
       </div>
 
+      {isOwner && <Link to="/admin" className="btn btn-subtle" style={{ display: 'flex', justifyContent: 'center', margin: '0 0 8px' }}>Owner panel</Link>}
       <ProfileEditor onSaved={async () => { await refresh(); showToast('Profile saved'); }} onError={showToast} />
       <UsernameEditor isOwner={isOwner} onSaved={async () => { await refresh(); showToast('Username changed'); }} />
 
@@ -83,7 +86,7 @@ export function Settings() {
         </div>
       </Section>
       <DeleteAccount email={session?.user.email ?? ''} isOwner={isOwner} />
-      <p className="muted small" style={{ textAlign: 'center', margin: '24px 0' }}>PULSE · friends-only · runs on free infrastructure</p>
+      <p className="muted small" style={{ textAlign: 'center', margin: '24px 0' }}>PULSE · friends-only · runs on free infrastructure · <Link to="/privacy">Privacy and rules</Link></p>
       {toast}
     </div>
   );
@@ -324,6 +327,8 @@ function DeleteAccount({ email, isOwner }: { email: string; isOwner: boolean }) 
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
   useEffect(() => () => setStepUp(false), []);
   if (isOwner) return null;
 
@@ -341,7 +346,8 @@ function DeleteAccount({ email, isOwner }: { email: string; isOwner: boolean }) 
     if (busy) return;
     setBusy(true); setError(null);
     setStepUp(true);
-    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken: captcha ?? undefined } });
+    setCaptcha(null); setCaptchaKey((k) => k + 1);
     if (authErr) { setStepUp(false); setBusy(false); setError(errorMessage(authErr)); return; }
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') { setStep('code'); setBusy(false); return; }
@@ -372,7 +378,8 @@ function DeleteAccount({ email, isOwner }: { email: string; isOwner: boolean }) 
               <>
                 <Field label="Enter your password to confirm" type="password" autoComplete="current-password" value={password}
                        onChange={(e) => setPassword(e.target.value)} />
-                <Button variant="danger" busy={busy} disabled={!password} onClick={confirmPassword}>Permanently delete account</Button>
+                <Captcha key={captchaKey} onToken={setCaptcha} />
+                <Button variant="danger" busy={busy} disabled={!password || (captchaEnabled && !captcha)} onClick={confirmPassword}>Permanently delete account</Button>
               </>
             ) : (
               <>

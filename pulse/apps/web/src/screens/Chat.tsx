@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type SetStateAction } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { canEditMessage, LIMITS } from '@pulse/domain';
@@ -12,6 +12,8 @@ import { MAX_VOICE_SECONDS, VoiceRecorder, voiceSupported } from '../lib/recorde
 import { compressImage } from '../lib/media';
 import { deliver as deliverQueued, enqueue, onOutbox, pendingFor, retry as retryQueued } from '../lib/outbox';
 import { useAuth } from '../lib/auth';
+import { useStreaks } from '../lib/streaks';
+import { MilestoneBanner, StreakBadge, StreakSheet } from '../components/Streak';
 import { GallerySheet, QUICK_REACTIONS, ReactionChips, SearchSheet, useReactions } from '../components/ChatExtras';
 
 type Expiry = 'after_view' | 'after_view_24h' | 'after_view_7d' | 'never';
@@ -24,6 +26,26 @@ const EXPIRY_TEXT: Record<Expiry, string> = {
 
 /** A message in the UI: server rows plus local optimistic sends. */
 interface UiMessage extends Message { local?: 'sending' | 'failed'; preview?: string; duration?: number }
+
+/** One entry per message (sender + client id), whatever order updates arrive in: the
+ *  server's copy wins over a local one, and the list stays in time order. */
+export function uniqueMessages(list: UiMessage[] | null): UiMessage[] | null {
+  if (!list) return list;
+  const at = new Map<string, number>();
+  const out: UiMessage[] = [];
+  let dup = false;
+  for (const m of list) {
+    const k = `${m.sender_id}:${m.client_msg_id}`;
+    const i = at.get(k);
+    if (i === undefined) { at.set(k, out.length); out.push(m); continue; }
+    dup = true;
+    const cur = out[i]!;
+    if (cur.local && !m.local) out[i] = { ...cur, ...m, local: undefined };   // server copy wins
+    else if (!cur.local && !m.local && m.id === cur.id) out[i] = { ...cur, ...m };
+  }
+  if (!dup) return list;
+  return out.sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
 interface SnapState { snap_id: string; recipient_id: string; status: 'delivered' | 'opened' | 'replayed' | 'expired'; views_used: number }
 
 const COLS = 'id,conversation_id,sender_id,kind,body,media_asset_id,snap_id,reply_to_id,client_msg_id,created_at,edited_at,deleted_at,expires_at';
@@ -37,7 +59,9 @@ export function Chat() {
   const me = profile?.id ?? '';
   const [conv, setConv] = useState<{ kind: 'direct' | 'group'; name: string | null; expiry_mode: Expiry } | null>(null);
   const [people, setPeople] = useState<Participant[]>([]);
-  const [messages, setMessages] = useState<UiMessage[] | null>(null);
+  const [messages, setRawMessages] = useState<UiMessage[] | null>(null);
+  const setMessages = useCallback((u: SetStateAction<UiMessage[] | null>) =>
+    setRawMessages((prev) => uniqueMessages(typeof u === 'function' ? u(prev) : u)), []);
   const [hasOlder, setHasOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -60,6 +84,9 @@ export function Chat() {
   reactionsRef.current = reactions;
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, showToast] = useToast();
+  const streaks = useStreaks();
+  const [streakOpen, setStreakOpen] = useState(false);
+  const [milestoneShown, setMilestoneShown] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const bcast = useRef<RealtimeChannel | null>(null);
@@ -464,6 +491,10 @@ export function Chat() {
 
   const other = people.find((p) => p.user_id !== me);
   const title = !conv ? '' : conv.kind === 'group' ? (conv.name ?? 'Group') : other ? nameOf(other.user_id) : 'Chat';
+  const streak = conv?.kind === 'direct' && other ? streaks.get(other.user_id) : undefined;
+  // A new milestone in this chat: celebrate once (MilestoneBanner records it as seen).
+  useEffect(() => { if (streak?.milestone_unseen && milestoneShown === null) setMilestoneShown(streak.milestone); },
+    [streak?.milestone_unseen, streak?.milestone, milestoneShown]);
   const typers = Object.keys(typing).map(nameOf);
   const byId = useMemo(() => new Map((messages ?? []).map((m) => [m.id, m])), [messages]);
   const handleOf = (uid: string) => people.find((p) => p.user_id === uid)?.username;
@@ -487,11 +518,15 @@ export function Chat() {
   return (
     <div className="screen screen-full">
       <div style={{ padding: '0 16px' }}>
-        <Header title={<span data-testid="chat-title">{title}</span>}
+        <Header title={<><span data-testid="chat-title">{title}</span><StreakBadge streak={streak} onClick={() => setStreakOpen(true)} /></>}
           left={<Link to="/chats" className="icon-btn" aria-label="Back to chats"><Icon name="back" /></Link>}
           right={<button className="icon-btn" aria-label="Chat settings" onClick={() => setShowExpiry(true)}><Icon name="more" /></button>} />
       </div>
       {conv && <div className="chat-notice"><Icon name="lock" size={14} />{EXPIRY_TEXT[conv.expiry_mode]}</div>}
+      {streak && milestoneShown !== null && milestoneShown > 0 && (
+        <div style={{ padding: '0 16px' }}><MilestoneBanner streak={{ ...streak, milestone: milestoneShown }} name={title} onDismiss={() => setMilestoneShown(0)} /></div>
+      )}
+      {streak && streakOpen && <StreakSheet streak={streak} name={title} onClose={() => setStreakOpen(false)} />}
       {error && <div style={{ padding: '0 16px' }}><Banner>{error}</Banner></div>}
       <div className="messages" ref={listRef} onScroll={onScroll} aria-live="polite" data-testid="messages">
         {hasOlder && messages && messages.length > 0 && (

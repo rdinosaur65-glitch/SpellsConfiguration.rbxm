@@ -7,6 +7,8 @@ import type { ChatListItem } from '../lib/types';
 import { Avatar, Banner, Button, Empty, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
 import { useChatList } from '../lib/live';
 import { useAuth } from '../lib/auth';
+import { useStreaks, type Streak } from '../lib/streaks';
+import { MilestoneBanner, StreakBadge } from '../components/Streak';
 import { SearchSheet } from '../components/ChatExtras';
 
 type Folder = 'all' | 'private' | 'groups' | 'unread';
@@ -19,6 +21,8 @@ function labelClass(item: ChatListItem): string {
 }
 
 export function Chats() {
+  const streaks = useStreaks();
+  const [celebrate, setCelebrate] = useState<Streak | null>(null);
   const { items, error, reload } = useChatList();
   const [folder, setFolder] = useState<Folder>('all');
   // Re-read on every visit: some changes (a block, an unfriend) have no realtime event.
@@ -30,6 +34,13 @@ export function Chats() {
   const { profile } = useAuth();
   const [toast, showToast] = useToast();
   const [removing, setRemoving] = useState<string | null>(null);
+  const nameFor = (uid: string) => (items ?? []).find((c) => c.kind === 'direct' && c.other_user_id === uid)?.title ?? 'a friend';
+  // One quiet celebration per new milestone (the server remembers it was seen).
+  useEffect(() => {
+    if (celebrate || !items) return;
+    const next = [...streaks.values()].find((s) => s.milestone_unseen);
+    if (next) setCelebrate(next);
+  }, [streaks, items, celebrate]);
 
   /** × on a blocked chat: removes it from *my* list only. Nothing is deleted; the other
    *  person's chat and history are untouched. */
@@ -56,6 +67,7 @@ export function Chats() {
         ))}
       </div>
       {error && <Banner>{error}</Banner>}
+      {celebrate && <MilestoneBanner streak={celebrate} name={nameFor(celebrate.friend_id)} onDismiss={() => setCelebrate(null)} />}
       {items === null ? <div className="center"><Spinner /></div> :
         visible.length === 0 ? (
           <Empty title={folder === 'all' ? 'No chats yet' : 'Nothing here'}>
@@ -87,6 +99,7 @@ export function Chats() {
                     <span className="grow">
                       <span className="list-title truncate" style={{ display: 'block', color: c.title_color ?? undefined }}>
                         {c.pinned_rank ? '📌 ' : ''}{title}{c.muted ? ' 🔕' : ''}
+                        {c.kind === 'direct' && c.other_user_id && <StreakBadge streak={streaks.get(c.other_user_id)} />}
                       </span>
                       <span className={labelClass(c)}>
                         <span className="label-dot" />{c.label} · {relativeTime(c.last_activity)}

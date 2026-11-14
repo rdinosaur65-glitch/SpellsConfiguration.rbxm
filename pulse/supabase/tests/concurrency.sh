@@ -10,6 +10,10 @@
 #  6. A Snap view authorisation races its close -> never served AND refunded.
 #  7. A member removal races their read -> no deadlock, the removal happens.
 #  8. Blocking someone while they leave a shared group -> no deadlock.
+#  9. Two friends Snap each other at the same moment -> the streak becomes exactly 1
+#     (neither update is lost, neither counts twice).
+# 10. Three friends each Snap the other two at once (many streak rows per Snap)
+#     -> no deadlock, every streak exactly 1.
 set -uo pipefail
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -212,3 +216,42 @@ deadlocks=$(cat $TMP/race8a $TMP/race8b | grep -c 'deadlock')
 ok=$(cat $TMP/race8a $TMP/race8b | grep -cE '^(LEFT|BLOCKED)')
 echo "  block vs leave race: completed=$ok deadlocks=$deadlocks"
 [ "$deadlocks" = "0" ] && [ "$ok" = "2" ] || { cat $TMP/race8a $TMP/race8b; exit 1; }
+
+# --- 9 / 10. streaks under simultaneous Snaps
+s9=$("${PSQL[@]}" "${DB[@]}" -At -f "$ROOT/supabase/tests/helpers.sql" -f - 2>&1 <<SQL | grep -E '^S9|ERROR' | tail -1
+create temp table s9 as select test.new_user('race_x_' || floor(random()*1e6)::int) x, test.new_user('race_y_' || floor(random()*1e6)::int) y,
+                               test.new_user('race_z_' || floor(random()*1e6)::int) z;
+select test.befriend(x, y), test.befriend(x, z), test.befriend(y, z) from s9;
+alter table s9 add column ax1 uuid, add column ay1 uuid, add column ax2 uuid, add column ay2 uuid, add column az2 uuid;
+update s9 set ax1 = test.upload(x, 'snap', 'image/jpeg', 1000), ay1 = test.upload(y, 'snap', 'image/jpeg', 1000),
+              ax2 = test.upload(x, 'snap', 'image/jpeg', 1000), ay2 = test.upload(y, 'snap', 'image/jpeg', 1000),
+              az2 = test.upload(z, 'snap', 'image/jpeg', 1000);
+select 'S9 ' || x || ' ' || y || ' ' || z || ' ' || ax1 || ' ' || ay1 || ' ' || ax2 || ' ' || ay2 || ' ' || az2 from s9;
+SQL
+)
+s9="${s9#S9 }"
+read -r SX SY SZ AX1 AY1 AX2 AY2 AZ2 <<< "$s9"
+if [ -z "${AZ2:-}" ]; then echo "race 9 setup failed: $s9"; exit 1; fi
+snap_tx() {  # $1 user, $2 asset, $3 recipients, $4 hold seconds
+  "${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$1")" -c "begin; select 'SENT ' || public.send_snap('$2', array[$3]::uuid[], null, 3::smallint, false, gen_random_uuid()); select pg_sleep($4); commit;" 2>&1 | grep -E 'SENT|ERROR'
+}
+streak_of() {
+  "${PSQL[@]}" "${DB[@]}" -At -c "select coalesce((select count from private.streaks where user_a = least('$1'::uuid, '$2'::uuid) and user_b = greatest('$1'::uuid, '$2'::uuid)), -1)"
+}
+snap_tx "$SX" "$AX1" "'$SY'" 1 > $TMP/race9a & P1=$!
+sleep 0.3
+snap_tx "$SY" "$AY1" "'$SX'" 0 > $TMP/race9b & P2=$!
+wait $P1 $P2
+c9=$(streak_of "$SX" "$SY")
+echo "  simultaneous Snaps both ways: streak=$c9"
+[ "$c9" = "1" ] && [ "$(cat $TMP/race9a $TMP/race9b | grep -c SENT)" = "2" ] || { cat $TMP/race9a $TMP/race9b; exit 1; }
+
+snap_tx "$SX" "$AX2" "'$SY','$SZ'" 0.5 > $TMP/race10a & P1=$!
+snap_tx "$SY" "$AY2" "'$SZ','$SX'" 0.5 > $TMP/race10b & P2=$!
+snap_tx "$SZ" "$AZ2" "'$SY','$SX'" 0.5 > $TMP/race10c & P3=$!
+wait $P1 $P2 $P3
+deadlocks=$(cat $TMP/race10a $TMP/race10b $TMP/race10c | grep -c 'deadlock')
+sent=$(cat $TMP/race10a $TMP/race10b $TMP/race10c | grep -c 'SENT')
+xy=$(streak_of "$SX" "$SY"); xz=$(streak_of "$SX" "$SZ"); yz=$(streak_of "$SY" "$SZ")
+echo "  three-way simultaneous Snaps: sent=$sent deadlocks=$deadlocks streaks=$xy/$xz/$yz"
+[ "$deadlocks" = "0" ] && [ "$sent" = "3" ] && [ "$xy" = "1" ] && [ "$xz" = "1" ] && [ "$yz" = "1" ] || { cat $TMP/race10a $TMP/race10b $TMP/race10c; exit 1; }

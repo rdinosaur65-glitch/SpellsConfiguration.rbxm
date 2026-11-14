@@ -40,6 +40,7 @@ export function Privacy() {
         <li>No ads, no trackers, no selling of data. Photos are re-encoded on your device, which removes location data.</li>
         <li>If the app hits an error, it sends the owner a short technical report (the error, the page, your browser) so it can be fixed — never your messages. Reports are deleted after 14 days.</li>
         <li>If you turn on notifications, your browser's push service (from Google, Apple, Mozilla or Microsoft) delivers them. They are encrypted for your device and only say who something is from — never what they wrote.</li>
+        <li>Snap streaks: PULSE stores, for you and each friend, the last day each of you sent the other a Snap and the streak count. Only the two of you can see it. Removing or blocking a friend ends the streak.</li>
       </ul>
 
       <h2 className="section-title">Deleting your account</h2>

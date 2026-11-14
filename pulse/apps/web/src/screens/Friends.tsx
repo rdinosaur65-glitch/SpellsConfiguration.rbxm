@@ -7,6 +7,8 @@ import type { SearchResult } from '../lib/types';
 import { Avatar, Banner, Button, Empty, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { useChatList, useFriendRequests } from '../lib/live';
+import { useStreaks } from '../lib/streaks';
+import { StreakBadge } from '../components/Streak';
 
 interface FriendRow { user_id: string; username: string; display_name: string; nickname: string | null; nickname_color: string | null;
   online: boolean | null; last_active_at: string | null }
@@ -21,6 +23,7 @@ export function Friends() {
   // Re-read on every visit, like the chat list (a live event can be missed while reconnecting).
   useEffect(() => { void reloadRequests(); }, [reloadRequests]);
   const { reload: reloadChats } = useChatList();
+  const streaks = useStreaks();
   const [friends, setFriends] = useState<FriendRow[] | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -175,7 +178,7 @@ export function Friends() {
                           onClick={() => openChat(f.user_id)}>
                     <Avatar name={name} online={f.online} />
                     <span className="grow">
-                      <span className="list-title truncate" style={{ display: 'block', color: f.nickname_color ?? undefined }}>{name}</span>
+                      <span className="list-title truncate" style={{ display: 'block', color: f.nickname_color ?? undefined }}>{name}<StreakBadge streak={streaks.get(f.user_id)} /></span>
                       <span className="list-sub">@{f.username}{f.online ? ' · Online' : f.last_active_at ? ` · ${relativeTime(f.last_active_at)}` : ''}</span>
                     </span>
                   </button>

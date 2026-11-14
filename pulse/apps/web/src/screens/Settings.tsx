@@ -464,6 +464,7 @@ function NotificationsSection({ onToast }: { onToast: (m: string) => void }) {
       <Toggle label="New chats" checked={prefs.messages !== false} onChange={(v) => void setPref('messages', v)} />
       <Toggle label="New Snaps" checked={prefs.snaps !== false} onChange={(v) => void setPref('snaps', v)} />
       <Toggle label="Friend requests" checked={prefs.friend_requests !== false} onChange={(v) => void setPref('friend_requests', v)} />
+      <Toggle label="Streak reminders (⌛ before a streak ends)" checked={prefs.streaks !== false} onChange={(v) => void setPref('streaks', v)} />
     </Section>
   );
 }

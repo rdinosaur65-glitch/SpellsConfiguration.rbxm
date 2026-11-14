@@ -146,6 +146,23 @@ immediately, not when its JWT expires. Its own state is readable only through
   no invitation; ownership is granted only when that address is confirmed, once, while no
   owner exists. A sign-up with the owner's address but no token is an ordinary sign-up.
 
+## Snap streaks (migration 0032)
+- Computed only in the database: an AFTER INSERT trigger on `snap_recipients` (written only
+  by `send_snap`) records a qualifying Snap — photo/video, direct chat, accepted friends,
+  no block — under the server clock (`now()`), in a fixed server timezone
+  (`platform_config.streak_timezone`, UTC). Clients cannot write `private.streaks` or call
+  the recording functions; `send_snap` is idempotent by client id, so replays add nothing.
+- Completion happens under a row lock (`select … for update`), once per server day; send_snap
+  processes recipients in id order so simultaneous multi-recipient Snaps never deadlock
+  (tested with real parallel connections).
+- Expiry: a 10-minute pg_cron job (`private.streak_maintenance`) zeroes streaks whose last
+  completed day is older than yesterday; reads apply the same rule, so a delayed job never
+  shows a dead streak. Warnings: one per streak per server day (`warned_on`), only to the
+  friend(s) who have not sent yet, in the last `streak_warn_hours`, only with the "streaks"
+  notification on, through the existing push queue (payload: friend's name + count).
+- Read only through `my_streaks()` (assert_active; the two friends only). Unfriending or
+  blocking deletes the row (re-friending starts from 0); account deletion cascades.
+
 ## Owner
 - Identified by UUID in `private.platform_config`, never by username.
 - Owner powers need a two-step-verified session (aal2): the owner must turn on 2FA before

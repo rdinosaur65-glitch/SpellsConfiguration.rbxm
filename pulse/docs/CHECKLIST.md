@@ -97,7 +97,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Local storage (OPFS/IndexedDB), albums, editor, On This Day, Vault | ⬜ |
 
 ## Phase 5 — Stories & engagement
-| Stories, audiences, streaks, Pulse Score, Inner Circle, badges, profiles, avatars | ⬜ |
+| Snap streaks (🔥/⌛, server days, expiry job, warnings, milestones) | ✅ |
+| Stories, audiences, Pulse Score, Inner Circle, badges, profiles, avatars | ⬜ |
 |---|---|
 
 ## Phase 6 — Advanced services

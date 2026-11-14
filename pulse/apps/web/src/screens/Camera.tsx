@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Avatar, Banner, Button, Icon, Sheet, Toggle, useToast } from '../components/ui';
+import { refreshStreaks } from '../lib/streaks';
 import { rpc } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
 import { compressImage, uploadMedia } from '../lib/media';
@@ -275,6 +276,7 @@ function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () =>
         p_view_seconds: media.kind === 'photo' ? seconds : null, p_allow_saving: allowSave, p_client_id: clientId.current,
       });
       const n = picked.size + groups.size;
+      void refreshStreaks();                       // the server may have just extended a streak
       onSent(n === 1 ? '1 chat' : `${n} chats`);
     } catch (e) { setError(errorMessage(e)); setBusy(false); }
   }

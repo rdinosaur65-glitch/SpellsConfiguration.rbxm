@@ -61,6 +61,12 @@ Not verifiable from here: how the delivered messages look inside Gmail (web, iPh
 Apple Mail and Outlook. Supabase Auth sends HTML only (no plain-text part is supported for
 its templates); the Edge Function emails include a plain-text part.
 
+## Snap streaks (live backend)
+Migration 0032 applied: triggers installed, `pulse-streaks` job every 10 minutes, server day
+= UTC (`platform_config.streak_timezone`; change with SQL, e.g. 'Europe/Amsterdam', if the
+friends live in one timezone), warnings in the last 4 hours of the day. Signed-out callers
+cannot read streaks; the table is not exposed.
+
 ## Prepared, not live
 - Web app built for GitHub Pages (`scripts/build-pages.sh`): sub-folder routing, service
   worker and manifest scoped to `/SpellsConfiguration.rbxm/`, CSP pinned to this project,

@@ -87,7 +87,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Snap delivery, timers, one replay, server sessions, saving, expiry | ✅ | DB (incl. concurrency) |
 | Camera preview, front/back, torch (if reported), still capture | ✅ | UI; nothing leaves the device until Send |
 | Sending photo Snaps (friends + groups, 1–10 s or ∞, saving permission), viewer with one replay | ✅ | e2e with Chromium's fake camera |
-| Video Snaps, editors, multi-clip | ⬜ | |
+| Video Snaps (hold the shutter, up to 15 s with sound; play once, close at the end) | ✅ e2e video-snap.spec.ts |
+| Snap editors, multi-clip | ⬜ | |
 
 ## Phase 4 — Memories (local-first per €0 override)
 | Item | Status |

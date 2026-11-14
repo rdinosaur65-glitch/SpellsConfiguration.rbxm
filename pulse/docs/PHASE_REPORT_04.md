@@ -146,6 +146,13 @@ leaves the phone before Send. Up to 2 minutes, recorded with the browser's own M
 media-url, so nothing loads by itself. Tests: e2e `voice.spec.ts` (cancel sends nothing; a
 recorded note is stored as audio with its duration; the other phone downloads and plays it).
 
+## 4b2c. Video Snaps
+Hold the shutter to record (up to 15 s, with sound if the microphone is allowed; a tap still
+takes a photo), preview it, then send it like a photo Snap. The friend watches it once with
+sound; the viewer closes when the video ends, and the server's viewing session lasts exactly
+the clip's length (replay rules as for photos). WebM (VP9/VP8 + Opus) or MP4 on iPhone,
+about 1.5 Mbit/s so a 10-second clip is ~2 MB. Tests: e2e `video-snap.spec.ts`.
+
 ## 4b3. Push review fixes, app error reports
 An independent review of push notifications confirmed 5 problems (2 high), all fixed in 0030
 with regression tests that failed before the fix: a malformed notification setting could jam
@@ -183,7 +190,7 @@ otherwise be missed until the next reload); Friends re-reads requests on every v
 | Domain unit tests | 11/11 |
 | SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 14/14 files (incl. push test 78 and concurrency races 1–8) |
 | SQL + Edge Functions on the real local Supabase stack | 15/15 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email, push-send against a mock push service) |
-| Playwright end-to-end (built PWA + local stack) | 23 passed, 1 skipped (the screenshot capture, by design); flaky-prone specs repeated 5–10× |
+| Playwright end-to-end (built PWA + local stack) | 24 passed, 1 skipped (the screenshot capture, by design); flaky-prone specs repeated 5–10× |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |
 
 ## 6. Remaining limitations and risks (honest list)
@@ -204,7 +211,7 @@ otherwise be missed until the next reload); Friends re-reads requests on every v
 - A human security review is still recommended before inviting people.
 
 ## 7. Not in this beta (planned)
-Video Snaps, Stories, streaks, Memories backup and Vault, calls,
+Stories, streaks, Memories backup and Vault, calls,
 map/location,
 Google sign-in (needs the owner's free OAuth credentials); Apple sign-in is not possible at €0.
 

@@ -125,7 +125,8 @@ select vault.create_secret('<the same long random string>', 'pulse_janitor_secre
 With a second email address (or a friend):
 - [ ] Sign up → confirmation email arrives → link opens the app signed in.
 - [ ] Search each other by username → request → accept.
-- [ ] Send a message, a photo, and a Snap from the Camera tab; view and replay the Snap.
+- [ ] Send a message, a photo, a voice note, and a Snap from the Camera tab (tap for a photo,
+      hold for a video); view and replay the Snap.
 - [ ] "Forgot password?" email arrives and works.
 - [ ] Owner panel shows usage; reporting the test account shows up there.
 - [ ] Settings → Notifications on (on iPhone: from the Home Screen app); a message from the
@@ -172,6 +173,6 @@ installs it like an app.
   (refuse new writes or uploads) before it would need a paid tier.
 
 ## What is not in this beta
-Video Snaps, Stories, streaks, Memories backup, calls,
+Stories, streaks, Memories backup, calls,
 the map, and Google/Apple sign-in (see `docs/CHECKLIST.md`). Push notifications in
 particular: friends only see new messages when they open the app.

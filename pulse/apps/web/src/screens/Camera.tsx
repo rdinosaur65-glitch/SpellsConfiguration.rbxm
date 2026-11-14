@@ -24,6 +24,11 @@ export function Camera() {
   const [torch, setTorch] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false });
   const shotCanvas = useRef<HTMLCanvasElement | null>(null);
   const [sending, setSending] = useState(false);
+  // Hold the shutter to record a video Snap (tap = photo).
+  const [clip, setClip] = useState<{ blob: Blob; url: string; seconds: number } | null>(null);
+  const [recording, setRecording] = useState<number | null>(null);      // seconds elapsed
+  const rec = useRef<{ r: MediaRecorder; mic: MediaStream | null; started: number; chunks: Blob[]; timer: ReturnType<typeof setInterval> } | null>(null);
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pickRef = useRef<HTMLInputElement>(null);
 
   // Fallback when the live camera cannot run here (permission blocked, older iOS home-screen
@@ -80,6 +85,62 @@ export function Camera() {
     return () => { document.removeEventListener('visibilitychange', onVis); stop(); };
   }, [stop]);
 
+  const MAX_CLIP_S = 15;
+  function videoMime(): string | undefined {
+    if (typeof MediaRecorder === 'undefined') return undefined;
+    return ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      .find((t) => MediaRecorder.isTypeSupported(t));
+  }
+  async function startClip() {
+    const cam = streamRef.current;
+    const mimeType = videoMime();
+    if (!cam || !mimeType || rec.current) return;
+    // Sound if the microphone is allowed; otherwise a silent clip.
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+    if (!streamRef.current) { mic?.getTracks().forEach((t) => t.stop()); return; }
+    const stream = new MediaStream([...cam.getVideoTracks(), ...(mic?.getAudioTracks() ?? [])]);
+    const r = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 64_000 });
+    const chunks: Blob[] = [];
+    r.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    const started = performance.now();
+    const timer = setInterval(() => {
+      const s = (performance.now() - started) / 1000;
+      setRecording(Math.floor(s));
+      if (s >= MAX_CLIP_S) void stopClip();
+    }, 200);
+    r.onstop = () => {
+      const seconds = Math.min(MAX_CLIP_S, Math.round((performance.now() - started) / 100) / 10);
+      mic?.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+      if (seconds < 0.5 || blob.size === 0) { showToast('Hold a little longer to record a video.'); return; }
+      setClip({ blob, url: URL.createObjectURL(blob), seconds });
+    };
+    rec.current = { r, mic, started, chunks, timer };
+    r.start(500);
+    setRecording(0);
+  }
+  async function stopClip() {
+    const cur = rec.current;
+    rec.current = null;
+    setRecording(null);
+    if (!cur) return;
+    clearInterval(cur.timer);
+    if (cur.r.state !== 'inactive') cur.r.stop();
+  }
+  function shutterDown() {
+    if (hold.current) clearTimeout(hold.current);
+    hold.current = setTimeout(() => { hold.current = null; void startClip(); }, 350);
+  }
+  function shutterUp() {
+    if (hold.current) { clearTimeout(hold.current); hold.current = null; capture(); return; }   // a tap
+    void stopClip();
+  }
+  function discardClip() {
+    if (clip) URL.revokeObjectURL(clip.url);
+    setClip(null);
+  }
+  useEffect(() => () => { void stopClip(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
   function capture() {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
@@ -102,8 +163,10 @@ export function Camera() {
 
   return (
     <div className="camera">
-      <video ref={videoRef} playsInline muted className={facing === 'user' ? 'mirror' : ''} style={{ display: state === 'live' && !shot ? 'block' : 'none' }} />
+      <video ref={videoRef} playsInline muted className={facing === 'user' ? 'mirror' : ''} style={{ display: state === 'live' && !shot && !clip ? 'block' : 'none' }} />
       {shot && <img src={shot} alt="Captured" className="shot" />}
+      {clip && <video src={clip.url} className="shot" autoPlay loop playsInline muted data-testid="clip-preview" aria-label="Recorded video" />}
+      {recording !== null && <span className="pill rec-pill" data-testid="clip-recording">● {recording}s / {MAX_CLIP_S}s</span>}
 
       {state !== 'live' && !shot && (
         <div className="camera-msg">
@@ -122,8 +185,9 @@ export function Camera() {
       )}
 
       <div className="camera-top">
-        {shot ? <button className="cam-btn" aria-label="Discard photo" onClick={() => setShot(null)}><Icon name="close" /></button> : <span />}
-        {state === 'live' && !shot && (
+        {shot ? <button className="cam-btn" aria-label="Discard photo" onClick={() => setShot(null)}><Icon name="close" /></button>
+          : clip ? <button className="cam-btn" aria-label="Discard video" onClick={discardClip}><Icon name="close" /></button> : <span />}
+        {state === 'live' && !shot && !clip && recording === null && (
           <div className="row">
             {torch.supported && <button className="cam-btn" aria-pressed={torch.on} aria-label="Torch" onClick={toggleTorch}>⚡</button>}
             <button className="cam-btn" aria-label="Switch camera" onClick={() => { const f = facing === 'user' ? 'environment' : 'user'; setFacing(f); void start(f); }}>
@@ -134,16 +198,24 @@ export function Camera() {
       </div>
 
       <div className="camera-bottom">
-        {state === 'live' && !shot && <button className="shutter" aria-label="Take photo" onClick={capture} />}
-        {shot && (
+        {state === 'live' && !shot && !clip && (
+          <button className={`shutter${recording !== null ? ' recording' : ''}`} aria-label="Take photo (hold to record a video)"
+                  onPointerDown={(e) => { e.preventDefault(); shutterDown(); }} onPointerUp={shutterUp}
+                  onPointerLeave={() => { if (recording !== null) void stopClip(); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); capture(); } }}
+                  onContextMenu={(e) => e.preventDefault()} />
+        )}
+        {(shot || clip) && (
           <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
-            <a className="btn btn-ghost" href={shot} download={`pulse-${Date.now()}.jpg`}>Save to device</a>
+            {shot && <a className="btn btn-ghost" href={shot} download={`pulse-${Date.now()}.jpg`}>Save to device</a>}
+            {clip && <a className="btn btn-ghost" href={clip.url} download={`pulse-${Date.now()}.${clip.blob.type.includes('mp4') ? 'mp4' : 'webm'}`}>Save to device</a>}
             <Button onClick={() => setSending(true)}>Send to…</Button>
           </div>
         )}
       </div>
-      {sending && shotCanvas.current && <SendSnap canvas={shotCanvas.current} onClose={() => setSending(false)}
-        onSent={(n) => { setSending(false); setShot(null); shotCanvas.current = null; showToast(`Snap sent to ${n}`); }} />}
+      {sending && (shotCanvas.current || clip) && <SendSnap media={clip ? { kind: 'video', blob: clip.blob, seconds: clip.seconds } : { kind: 'photo', canvas: shotCanvas.current! }}
+        onClose={() => setSending(false)}
+        onSent={(n) => { setSending(false); setShot(null); shotCanvas.current = null; discardClip(); showToast(`Snap sent to ${n}`); }} />}
       {toast}
     </div>
   );
@@ -151,7 +223,9 @@ export function Camera() {
 
 const TIMERS: Array<[number | null, string]> = [[1, '1s'], [3, '3s'], [5, '5s'], [10, '10s'], [null, '∞']];
 
-function SendSnap({ canvas, onClose, onSent }: { canvas: HTMLCanvasElement; onClose: () => void; onSent: (summary: string) => void }) {
+type SnapMedia = { kind: 'photo'; canvas: HTMLCanvasElement } | { kind: 'video'; blob: Blob; seconds: number };
+
+function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () => void; onSent: (summary: string) => void }) {
   const { items } = useChatList();
   const [friends, setFriends] = useState<Array<{ user_id: string; username: string; display_name: string; nickname: string | null }> | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -169,10 +243,12 @@ function SendSnap({ canvas, onClose, onSent }: { canvas: HTMLCanvasElement; onCl
     if (busy) return;
     setBusy(true); setError(null);
     try {
-      const asset = await uploadMedia(await compressImage(canvas), 'snap');
+      const asset = media.kind === 'photo'
+        ? await uploadMedia(await compressImage(media.canvas), 'snap')
+        : await uploadMedia(media.blob, 'snap', { durationSeconds: media.seconds });
       await rpc('send_snap', {
         p_media_asset: asset, p_recipients: [...picked], p_groups: [...groups],
-        p_view_seconds: seconds, p_allow_saving: allowSave, p_client_id: clientId.current,
+        p_view_seconds: media.kind === 'photo' ? seconds : null, p_allow_saving: allowSave, p_client_id: clientId.current,
       });
       const n = picked.size + groups.size;
       onSent(n === 1 ? '1 chat' : `${n} chats`);
@@ -183,12 +259,14 @@ function SendSnap({ canvas, onClose, onSent }: { canvas: HTMLCanvasElement; onCl
     <Sheet label="Send Snap" onClose={onClose} style={{ color: 'var(--text)' }}>
       <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>Send Snap</h2>
       {error && <Banner>{error}</Banner>}
-      <span className="field-label" style={{ margin: '0 4px' }}>Timer</span>
-      <div className="timer-grid" role="group" aria-label="Snap timer">
-        {TIMERS.map(([v, label]) => (
-          <button key={label} className="chip" aria-pressed={seconds === v} onClick={() => setSeconds(v)}>{label}</button>
-        ))}
-      </div>
+      {media.kind === 'photo' ? (<>
+        <span className="field-label" style={{ margin: '0 4px' }}>Timer</span>
+        <div className="timer-grid" role="group" aria-label="Snap timer">
+          {TIMERS.map(([v, label]) => (
+            <button key={label} className="chip" aria-pressed={seconds === v} onClick={() => setSeconds(v)}>{label}</button>
+          ))}
+        </div>
+      </>) : <p className="muted small" style={{ margin: '0 4px' }}>Video · {media.seconds.toFixed(1)} s — plays once, with sound.</p>}
       <Toggle label="Let them save it" description="An in-app permission; screenshots can't be prevented."
               checked={allowSave} onChange={setAllowSave} />
       <span className="field-label" style={{ margin: '8px 4px 0' }}>Friends</span>

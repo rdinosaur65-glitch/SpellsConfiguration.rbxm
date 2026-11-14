@@ -273,3 +273,8 @@ a.sheet-item { display: flex; align-items: center; justify-content: center; text
 .voice-load { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 22px;
   background: transparent; color: inherit; font: inherit; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+
+/* ---------- video Snaps ---------- */
+.shutter.recording { border-color: var(--danger); box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 45%, transparent); transform: scale(1.08); }
+.rec-pill { position: absolute; top: calc(64px + var(--safe-top)); left: 50%; transform: translateX(-50%); z-index: 2; color: #fff; background: rgb(220 38 38 / .85); }
+.shutter { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }

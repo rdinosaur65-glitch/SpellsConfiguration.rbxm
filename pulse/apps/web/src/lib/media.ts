@@ -106,8 +106,9 @@ export function chatMediaObjectUrl(assetId: string): Promise<string> {
 }
 
 /** Snap bytes are never cached: fetched for one viewing session, then released. */
-export async function snapObjectUrl(snapId: string, sessionId: string): Promise<string> {
-  return URL.createObjectURL(await fetchMedia({ snap_id: snapId, session_id: sessionId }));
+export async function snapObjectUrl(snapId: string, sessionId: string): Promise<{ url: string; video: boolean }> {
+  const blob = await fetchMedia({ snap_id: snapId, session_id: sessionId });
+  return { url: URL.createObjectURL(blob), video: blob.type.startsWith('video/') };
 }
 
 export function releaseAllMedia() {

@@ -75,6 +75,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
   const [left, setLeft] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [video, setVideo] = useState(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const st = useRef({ closed: false, mounted: false, session: null as string | null, src: null as string | null });
@@ -116,9 +117,9 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
         }
         if (!alive) return;
         setView(v);
-        const url = await snapObjectUrl(snapId, v.session_id);
+        const { url, video: isVideo } = await snapObjectUrl(snapId, v.session_id);
         if (!alive || st.current.closed) { URL.revokeObjectURL(url); return; }
-        st.current.src = url; setSrc(url);
+        st.current.src = url; setVideo(isVideo); setSrc(url);
       } catch (e) { if (alive) setError(errorMessage(e)); }
     })();
     return () => { alive = false; };
@@ -126,7 +127,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
 
   // Countdown from the moment the image is on screen, on a fixed local end time.
   useEffect(() => {
-    if (!view || !src) return;
+    if (!view || !src || video) return;       // a video closes when it ends (below)
     const seconds = view.unlimited || !view.view_seconds ? UNLIMITED_LOCAL_CAP_S : view.view_seconds;
     const end = performance.now() + seconds * 1000;
     const tick = () => {
@@ -137,7 +138,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     tick();
     const t = setInterval(tick, 200);
     return () => clearInterval(t);
-  }, [view, src, finish]);
+  }, [view, src, video, finish]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') void finish(true); };
@@ -152,7 +153,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     try {
       await rpc('save_snap', { p_snap: snapId, p_session: view.session_id });
       const a = document.createElement('a');
-      a.href = src; a.download = `pulse-snap-${snapId.slice(0, 8)}.jpg`; a.click();
+      a.href = src; a.download = `pulse-snap-${snapId.slice(0, 8)}.${video ? 'webm' : 'jpg'}`; a.click();
       setSaved(true);
     } catch (e) { setError(errorMessage(e)); }
   }
@@ -161,7 +162,14 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
   const tapClose = () => { if (src || error) void finish(true); };
   return createPortal(
     <div className="snap-viewer" role="dialog" aria-modal="true" aria-label="Snap" data-testid="snap-viewer" onClick={tapClose}>
-      {error ? <p className="snap-msg">{error}</p> : !src ? <Spinner /> : (
+      {error ? <p className="snap-msg">{error}</p> : !src ? <Spinner /> : video ? (
+        // Plays once, with sound, then closes; the server's session ends with the video too.
+        <video src={src} className="snap-image" data-testid="snap-video" autoPlay playsInline controls={false}
+               disablePictureInPicture controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()}
+               onTimeUpdate={(e) => { const v = e.currentTarget; if (v.duration) setLeft(Math.max(0, Math.ceil(v.duration - v.currentTime))); }}
+               onLoadedData={(e) => { const v = e.currentTarget; void v.play().catch(() => { v.muted = true; void v.play().catch(() => {}); }); }}
+               onEnded={() => void finish(true)} onError={() => setError('This video could not be played.')} />
+      ) : (
         <img src={src} alt="Snap" className="snap-image" data-testid="snap-image" draggable={false}
              onContextMenu={(e) => e.preventDefault()} />
       )}

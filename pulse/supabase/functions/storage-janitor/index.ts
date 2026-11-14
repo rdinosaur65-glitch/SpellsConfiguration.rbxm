@@ -4,7 +4,7 @@
 // gateway JWT checks are off for this function (config.toml), the secret is the gate.
 // Loop: janitor_claim_deletions() → Storage bulk delete → janitor_mark_deleted().
 // Objects that are already gone count as removed. Time-boxed so one run stays short.
-import { SERVICE_KEY, SUPABASE_URL, json, rpc, safeEqual } from '../_shared/http.ts';
+import { SERVICE_KEY, SUPABASE_URL, json, rpc, safeEqual, serviceHeaders } from '../_shared/http.ts';
 
 const SECRET = Deno.env.get('JANITOR_SECRET') ?? '';
 const BATCH = 100;
@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     for (const [bucket, items] of byBucket) {
       const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+        headers: { ...serviceHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ prefixes: items.map((i) => i.object_path) }),
       });
       // 200 with the list of removed objects; missing objects are simply not listed,

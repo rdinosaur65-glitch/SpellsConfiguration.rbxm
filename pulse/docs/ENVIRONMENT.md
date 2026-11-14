@@ -12,6 +12,9 @@ Nothing here costs money. Every value comes from a free account the **owner** cr
 | `VITE_TURNSTILE_SITE_KEY` | Recommended | Cloudflare Turnstile widget (free) | Turn on together with captcha in Supabase Auth |
 | `VITE_OWNER_CONTACT` | Recommended | You | How friends reach you (shown on the privacy page), e.g. an email address |
 | `VITE_VAPID_PUBLIC_KEY` | For notifications | `node scripts/gen-vapid.mjs` (local, free) | Public half only; without it the Notifications switch is hidden |
+| `VITE_EMAIL_PENDING` | Only while email is not set up | You | `true` marks email-dependent features (password reset, owner 2FA reset, security alerts) as pending in the app. Leave unset once SMTP works |
+| `PULSE_BASE` | GitHub Pages | Build-time (not `VITE_`) | Folder the app is served from, e.g. `/SpellsConfiguration.rbxm/`. Default `/` |
+| `PULSE_HOST` | GitHub Pages | Build-time | `github-pages`: CSP/referrer/noindex as `<meta>` tags, clickjacking guard, `404.html`, `.nojekyll` (GitHub Pages cannot send headers) |
 | `VITE_TURN_CREDENTIALS_URL` | Future (calls) | Open Relay dashboard (free, 20 GB/month) | Not used by this beta |
 | `VITE_STUN_URLS` | Future (calls) | Default `stun:stun.l.google.com:19302` | Not used by this beta |
 

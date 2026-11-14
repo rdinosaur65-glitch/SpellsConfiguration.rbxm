@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { EMAIL_PENDING } from '../lib/features';
 import { formatBytes } from '@pulse/domain';
 import { rpc } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
@@ -157,6 +158,8 @@ export function Admin() {
       )}
 
       <h2 className="section-title">Accounts</h2>
+      {EMAIL_PENDING && <p className="muted small" data-testid="email-pending" style={{ margin: '0 4px 8px' }}>
+        Email is pending: 2FA resets (which email you a code) stay off until PULSE email is set up.</p>}
       <div className="search">
         <Icon name="search" size={20} />
         <div className="field"><input type="search" aria-label="Search accounts" placeholder="Search accounts" value={query}
@@ -170,7 +173,8 @@ export function Admin() {
                 <span className="list-title truncate" style={{ display: 'block' }}>{u.display_name} <span className="muted small">@{u.username}</span></span>
                 <span className="list-sub">{u.account_state}{u.open_reports ? ` · ${u.open_reports} open report${u.open_reports > 1 ? 's' : ''}` : ''} · joined {relativeTime(u.created_at)}</span>
               </span>
-              <Button className="btn btn-ghost btn-sm" onClick={() => setResetFor({ id: u.id, username: u.username })}>Reset 2FA</Button>
+              <Button className="btn btn-ghost btn-sm" disabled={EMAIL_PENDING} title={EMAIL_PENDING ? 'Needs PULSE email (pending)' : undefined}
+                      onClick={() => setResetFor({ id: u.id, username: u.username })}>{EMAIL_PENDING ? 'Reset 2FA (needs email)' : 'Reset 2FA'}</Button>
               {u.account_state === 'active' && <>
                 <Button className="btn btn-ghost btn-sm" busy={busy === `${u.id}:suspended`} onClick={() => setState(u.id, 'suspended', `suspending @${u.username}`)}>Suspend</Button>
                 <Button className="btn btn-danger btn-sm" busy={busy === `${u.id}:banned`} onClick={() => setState(u.id, 'banned', `banning @${u.username}`)}>Ban</Button>

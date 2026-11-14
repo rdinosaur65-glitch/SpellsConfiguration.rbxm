@@ -7,7 +7,7 @@
 // 2. Stream that one copy back from Storage (read with the service role).
 // No URL is ever handed out, so nothing can be re-downloaded or shared, and the
 // response is marked no-store so browsers and proxies do not keep it on disk.
-import { CORS, SERVICE_KEY, SUPABASE_URL, UUID, json, rpc } from '../_shared/http.ts';
+import { CORS, SUPABASE_URL, UUID, json, rpc, serviceHeaders } from '../_shared/http.ts';
 
 interface Grant { bucket: string; object_path: string; mime_type: string; valid_seconds: number }
 
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
   const path = g.object_path.split('/').map(encodeURIComponent).join('/');
   const obj = await fetch(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(g.bucket)}/${path}`, {
-    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+    headers: serviceHeaders(),
   });
   if (!obj.ok || !obj.body) return json(obj.status === 404 ? 404 : 502, { error: obj.status === 404 ? 'media_not_found' : 'storage_unavailable' });
 

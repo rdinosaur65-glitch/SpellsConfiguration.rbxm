@@ -18,7 +18,7 @@ captureInstallPrompt();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || undefined}>
         <AuthProvider>
           <App />
         </AuthProvider>

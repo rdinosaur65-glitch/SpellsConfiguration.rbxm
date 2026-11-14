@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { EMAIL_PENDING } from '../lib/features';
 import { formatBytes, nextUsernameChangeAt, storageState, validateUsername } from '@pulse/domain';
 import { rpc, supabase } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
@@ -210,7 +211,7 @@ function SecuritySection({ onToast, email }: { onToast: (m: string) => void; ema
         ? 'For your safety, sign out and back in, then change your password.' : errorMessage(error));
       return;
     }
-    setNewPassword(''); onToast('Password changed. A security alert was emailed to you.');
+    setNewPassword(''); onToast(EMAIL_PENDING ? 'Password changed.' : 'Password changed. A security alert was emailed to you.');
   }
   const verified = (factors ?? []).filter((f) => f.status === 'verified');
 
@@ -220,7 +221,8 @@ function SecuritySection({ onToast, email }: { onToast: (m: string) => void; ema
         {error && <Banner>{error}</Banner>}
         <div className="row"><span className="grow"><strong>Two-step verification</strong><br />
           <span className="muted small">{factorsError ? 'Couldn’t check right now.' : factors === null ? 'Checking…'
-            : verified.length ? 'On — codes from your authenticator app are required to sign in. Lost your phone? The PULSE owner can reset it after confirming it’s you.' : 'Off'}</span></span></div>
+            : verified.length ? (EMAIL_PENDING ? 'On — codes from your authenticator app are required to sign in. Owner resets need PULSE email, which isn’t set up yet, so keep a backup of the setup code.'
+              : 'On — codes from your authenticator app are required to sign in. Lost your phone? The PULSE owner can reset it after confirming it’s you.') : 'Off'}</span></span></div>
         {factorsError ? <Button variant="subtle" onClick={() => void load()}>Try again</Button> : factors === null ? <Spinner small /> : verified.length > 0
           ? verified.map((f) => <Button key={f.id} variant="danger" onClick={() => remove(f.id)}>Turn off</Button>)
           : enroll ? (
@@ -236,7 +238,7 @@ function SecuritySection({ onToast, email }: { onToast: (m: string) => void; ema
           ) : <Button variant="subtle" onClick={start}>Set up two-step verification</Button>}
         <hr style={{ border: 0, borderTop: '1px solid var(--border)', width: '100%' }} />
         <Field label="New password" type="password" autoComplete="new-password" value={newPassword}
-               onChange={(e) => setNewPassword(e.target.value)} hint={`Signed in as ${email}. You'll get an email alert.`} />
+               onChange={(e) => setNewPassword(e.target.value)} hint={EMAIL_PENDING ? `Signed in as ${email}.` : `Signed in as ${email}. You'll get an email alert.`} />
         <Button variant="subtle" busy={busy} disabled={newPassword.length < 8} onClick={changePassword}>Change password</Button>
       </div>
     </Section>

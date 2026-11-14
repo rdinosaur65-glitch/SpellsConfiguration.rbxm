@@ -16,7 +16,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
         <div className="auth-card" style={{ textAlign: 'center' }}>
           <h1 style={{ fontSize: 22 }}>Something went wrong</h1>
           <p className="muted">PULSE hit an unexpected error. Your data is safe on the server.</p>
-          <button className="btn btn-primary" onClick={() => window.location.assign('/')}>Reload PULSE</button>
+          <button className="btn btn-primary" onClick={() => window.location.assign(import.meta.env.BASE_URL)}>Reload PULSE</button>
         </div>
       </main>
     );

@@ -6,8 +6,9 @@ import { errorMessage } from '../lib/errors';
 import { Banner, Button, Field } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { Captcha, captchaEnabled } from '../components/Captcha';
+import { EMAIL_PENDING } from '../lib/features';
 
-const redirectTo = () => `${window.location.origin}/`;
+const redirectTo = () => `${window.location.origin}${import.meta.env.BASE_URL}`;
 const PASSWORD_HINT = 'At least 8 characters, with letters and numbers.';
 
 function validPassword(p: string): boolean {
@@ -19,7 +20,7 @@ function AuthLayout({ subtitle, children }: { subtitle: string; children: ReactN
     <main className="auth">
       <div className="auth-card">
         <div className="brand">
-          <img src="/icon.svg" alt="" />
+          <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
           <h1>PULSE</h1>
           <p>{subtitle}</p>
         </div>
@@ -128,6 +129,8 @@ export function SignUp() {
   return (
     <AuthLayout subtitle="Create your account">
       <form className="stack" onSubmit={submit} noValidate>
+        {EMAIL_PENDING && <Banner kind="info" testId="email-pending">PULSE email is still being set up, so confirmation
+          emails may not arrive yet. The owner will tell you when sign-ups are open.</Banner>}
         {error && <Banner>{error}</Banner>}
         <Field label="Email" type="email" name="email" autoComplete="email" inputMode="email" required
                value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -162,7 +165,7 @@ export function ForgotPassword() {
     e.preventDefault();
     setBusy(true); setError(null);
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(),
-      { redirectTo: `${window.location.origin}/reset-password`, captchaToken: captcha ?? undefined });
+      { redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password`, captchaToken: captcha ?? undefined });
     setBusy(false);
     setCaptcha(null); setCaptchaKey((k) => k + 1);
     // Same message whether or not the address exists (no account enumeration), but never
@@ -176,7 +179,10 @@ export function ForgotPassword() {
 
   return (
     <AuthLayout subtitle="Reset your password">
-      {done ? (
+      {EMAIL_PENDING ? (
+        <Banner kind="info" testId="email-pending">Password reset by email isn’t available yet: PULSE email is still being
+          set up. If you can’t sign in, ask the PULSE owner for help.</Banner>
+      ) : done ? (
         <Banner kind="info">If an account exists for <strong>{email}</strong>, a reset link is on its way.</Banner>
       ) : (
         <form className="stack" onSubmit={submit} noValidate>

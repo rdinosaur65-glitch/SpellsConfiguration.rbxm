@@ -69,7 +69,7 @@ function useEmailLink(): 'idle' | 'verifying' | 'failed' {
     void supabase.auth.verifyOtp({ token_hash: tokenHash, type: type === 'signup' ? 'email' : type }).then(({ error }) => {
       if (!alive) return;
       const path = type === 'recovery' ? '/reset-password' : '/';
-      window.history.replaceState(null, '', path);
+      window.history.replaceState(null, '', import.meta.env.BASE_URL + path.slice(1));   // (the app may live in a sub-folder)
       if (error) { setState('failed'); nav(type === 'recovery' ? '/reset-password' : '/signin', { replace: true, state: { linkFailed: true } }); }
       else { setState('idle'); nav(path, { replace: true }); }
     });

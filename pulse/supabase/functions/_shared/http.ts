@@ -5,6 +5,18 @@ export const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 export const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 export const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+/**
+ * Headers that act as the service role. Hosted projects created since the new API keys
+ * hand functions a secret key (sb_secret_…), which is not a JWT: it must travel in
+ * `apikey` (the API gateway turns it into a service-role JWT) and must not be paired with
+ * another key. Legacy service-role keys are JWTs and also go in Authorization.
+ */
+export function serviceHeaders(): Record<string, string> {
+  return SERVICE_KEY.split('.').length === 3
+    ? { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` }
+    : { apikey: SERVICE_KEY };
+}
+
 export const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',   // auth is a bearer token, never a cookie
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -19,12 +31,14 @@ export function json(status: number, body: unknown): Response {
   });
 }
 
-/** Call a Postgres function through PostgREST with the given bearer token. */
+/** Call a Postgres function through PostgREST with the given bearer token (a user's JWT,
+ *  or SERVICE_KEY to act as the service role). */
 export async function rpc<T>(fn: string, args: Record<string, unknown>, bearer: string): Promise<
   { ok: true; data: T } | { ok: false; status: number; code: string }> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
+    headers: { ...(bearer === SERVICE_KEY ? serviceHeaders() : { apikey: ANON_KEY, Authorization: `Bearer ${bearer}` }),
+               'Content-Type': 'application/json' },
     body: JSON.stringify(args),
   });
   const text = await res.text();

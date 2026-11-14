@@ -21,7 +21,7 @@ export function MfaChallenge({ onDone }: { onDone: () => void }) {
   return (
     <main className="auth">
       <form className="auth-card" onSubmit={submit}>
-        <div className="brand"><img src="/icon.svg" alt="" /><h1>PULSE</h1><p>Two-step verification</p></div>
+        <div className="brand"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" /><h1>PULSE</h1><p>Two-step verification</p></div>
         {error && <Banner>{error}</Banner>}
         <Field label="Code from your authenticator app" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
                autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />

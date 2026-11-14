@@ -61,8 +61,8 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   );
 }
 
-export function Banner({ kind = 'error', children }: { kind?: 'error' | 'info' | 'success'; children: ReactNode }) {
-  return <div className={`banner banner-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>{children}</div>;
+export function Banner({ kind = 'error', testId, children }: { kind?: 'error' | 'info' | 'success'; testId?: string; children: ReactNode }) {
+  return <div className={`banner banner-${kind}`} role={kind === 'error' ? 'alert' : 'status'} data-testid={testId}>{children}</div>;
 }
 
 export function Header({ title, left, right }: { title: ReactNode; left?: ReactNode; right?: ReactNode }) {

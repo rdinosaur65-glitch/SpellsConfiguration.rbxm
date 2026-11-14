@@ -96,6 +96,10 @@ select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/stora
 select vault.create_secret('<the same long random string>', 'pulse_janitor_secret');
 ```
 
+Note on API keys: projects created since Supabase's new API keys give Edge Functions a
+secret key (`sb_secret_…`) instead of a JWT. The functions handle both
+(`serviceHeaders()` in `supabase/functions/_shared/http.ts`); nothing to configure.
+
 ## 6. The app itself — Cloudflare Pages (free)
 1. Cloudflare → Workers & Pages → **Create** → Pages → connect to GitHub → choose this
    repository. Production branch: the branch that holds PULSE
@@ -108,6 +112,31 @@ select vault.create_secret('<the same long random string>', 'pulse_janitor_secre
    `VITE_OWNER_CONTACT=<how friends reach you, e.g. an email>`, `VITE_VAPID_PUBLIC_KEY=<public key from step 5>`.
 4. Deploy. Note the address (e.g. `https://pulse-abc.pages.dev`) and finish step 3's URL
    settings with it.
+
+### 6b. Or: GitHub Pages (free, no new account)
+GitHub Pages is free for public repositories and needs nothing beyond the GitHub account
+that already holds this repository. The site is
+`https://<github-user>.github.io/<repository>/` (here
+`https://rdinosaur65-glitch.github.io/SpellsConfiguration.rbxm/`).
+1. Build into the repository's `docs/` folder with only public values:
+   `VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… VITE_VAPID_PUBLIC_KEY=… scripts/build-pages.sh`
+   (refuses to finish if anything but an anon key ends up in the bundle). Commit `docs/` to
+   the PULSE branch and push. Nothing is public yet.
+2. **Going live** (the owner's decision): GitHub → repository → Settings → Pages →
+   Source **Deploy from a branch** → branch `claude/pulse-project-continuation-ji3lu1`,
+   folder **/docs** → Save. After that, every push that changes `docs/` updates the site;
+   switching Source to **None** takes it offline again.
+3. Supabase → Authentication → URL Configuration: Site URL
+   `https://rdinosaur65-glitch.github.io/SpellsConfiguration.rbxm`, redirect URL
+   `https://rdinosaur65-glitch.github.io/SpellsConfiguration.rbxm/**` (never the whole
+   `github.io` host). `VAPID_SUBJECT` can stay `mailto:<the PULSE Gmail address>`.
+
+Trade-offs against Cloudflare Pages: GitHub Pages cannot send response headers, so the
+Content-Security-Policy and referrer policy are `<meta>` tags, `X-Frame-Options` /
+`frame-ancestors` are replaced by `frame-guard.js` (the page hides itself inside a foreign
+frame), and `Permissions-Policy` is not available (the browser still asks before camera,
+microphone or location use). The page carries `noindex`. The address shows the GitHub
+username.
 
 ## 7. Become the owner
 1. Open the app, sign up with your own account and confirm the email.

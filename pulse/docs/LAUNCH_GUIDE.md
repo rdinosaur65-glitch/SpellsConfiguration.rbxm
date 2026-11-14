@@ -24,14 +24,25 @@ email address. Keep a notes file open: you will copy a few keys between websites
    Never run anything from `supabase/tests/` against this project.
 
 ## 2. Email that actually arrives — free SMTP (required)
-Supabase's built-in mailer only emails the project's own team, so your friends would
-never get their confirmation link.
-1. Create a free account at an SMTP provider (Brevo's free plan sends about 300 emails a
-   day). Verify your sender address there and create SMTP credentials.
-2. Supabase → Authentication → **SMTP Settings**: enable custom SMTP and paste host, port,
-   username and password; sender name "PULSE".
+Supabase's built-in mailer only emails the project's own team (and only a couple of
+emails an hour), so your friends would never get their confirmation link. Custom SMTP is
+also what unlocks editing the email templates in step 3.
+
+**Recommended without a domain — Gmail with an app password (free, about 500 emails/day):**
+1. Use (or create) a Google account for PULSE. Turn on 2-Step Verification for it.
+2. Google Account → Security → **App passwords** → create one named "PULSE".
+3. Supabase → Authentication → **SMTP Settings**: enable custom SMTP. Host
+   `smtp.gmail.com`, port `465`, username = the Gmail address, password = the app password,
+   sender email = the same Gmail address, sender name "PULSE".
+
+**Alternative — Brevo free plan (300 emails/day, no card):** works well only with a sender
+domain you own (DNS records). With a Gmail/Outlook address as the sender, messages often
+fail the receiver's anti-spoofing checks and land in spam — and buying a domain is outside
+PULSE's €0 rule, so prefer Gmail above unless you already own a domain. New Brevo accounts
+may also need manual approval before they can send.
 
 ## 3. Sign-in settings (Supabase → Authentication)
+(Template editing only becomes available after step 2.)
 Follow the list in `docs/ENVIRONMENT.md` → "Supabase Auth settings". In short:
 - Email confirmations **on**; minimum password length 8 with letters and digits.
 - Multi-factor: **TOTP on** (free). Phone MFA off.
@@ -100,6 +111,20 @@ Share the app address. On phones, "Add to Home Screen" installs it like an app.
 - Watch the Owner panel meters. At 70% of anything, tidy up. On their own, the database
   refuses new text at 90% of its 500 MB, and each storage pool refuses uploads when full
   (the backup pool at 90%), so the project never exceeds the free plan.
+
+## Free-plan facts to keep in mind
+- **Inactivity pause:** Supabase pauses a Free project after about a week with no activity.
+  Any visit wakes the app's data within a minute or two; you can also resume it from the
+  dashboard. Normal use by a friend group keeps it awake.
+- Two Free projects per Supabase account; PULSE needs one.
+- Capacity limits (PULSE enforces its own lower ceilings, see the Owner panel): database
+  500 MB, files 1 GB, downloads about 5 GB a month (PULSE spends at most ~160 MB a day,
+  64 MB per person), 500,000 Edge Function calls a month (each photo or Snap view is one),
+  200 simultaneous live connections, 2 million realtime messages a month, 300–500 emails a
+  day depending on the SMTP choice.
+- None of the services above asks for a payment card on the free plan. If any of them ever
+  shows an upgrade or billing screen, do not enter card details: PULSE is designed to stop
+  (refuse new writes or uploads) before it would need a paid tier.
 
 ## What is not in this beta
 Video Snaps, voice notes, Stories, streaks, Memories backup, calls, push notifications,

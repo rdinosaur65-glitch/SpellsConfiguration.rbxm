@@ -138,8 +138,14 @@ addresses on the project's **team**, is best-effort, and is capped at a few emai
 hour ([Supabase: custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)). Email
 confirmation, password reset and security alerts therefore need a custom SMTP server.
 
-€0 option: a free transactional-email tier that needs no payment card, connected in
-Supabase → Authentication → SMTP. Brevo documents this integration
+€0 options (connected in Supabase → Authentication → SMTP, which also unlocks editing
+the email templates):
+- **Gmail SMTP with an app password** (recommended when you own no domain): free, about
+  500 emails a day, the sender is the Gmail address itself so receivers' anti-spoofing
+  checks pass. Needs 2-Step Verification on that Google account.
+- **Brevo free plan** (300 a day, no card): best with a sender domain you own; with a
+  free-mail sender address, delivery to inboxes is unreliable. Brevo documents the
+  integration
 ([Brevo + Supabase](https://developers.brevo.com/docs/supabase-smtp-integration)); its free
 plan has a daily sending cap that fits a small friends-only community. **Verify the free
 plan's current terms and that no card is requested at signup; stop if one is.** After

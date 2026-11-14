@@ -56,8 +56,9 @@ update private.platform_config set registration_cap = 50,
 ### Email delivery (required before inviting anyone)
 Supabase's built-in mailer only delivers to members of the project's team and is heavily
 rate-limited, so real users would never receive their confirmation email. Configure a free
-SMTP provider under Auth → SMTP Settings (for example Brevo's free plan, about 300 emails a
-day) — see `docs/INFRASTRUCTURE_ZERO_COST.md` §7. The owner creates that account; PULSE
+SMTP provider under Auth → SMTP Settings — without a domain of your own, Gmail with an app
+password (about 500 a day); with one, Brevo's free plan (300 a day). Step by step in
+`docs/LAUNCH_GUIDE.md` §2 and `docs/INFRASTRUCTURE_ZERO_COST.md` §7. The owner creates that account; PULSE
 itself needs no paid service.
 
 ### Other dashboard notes

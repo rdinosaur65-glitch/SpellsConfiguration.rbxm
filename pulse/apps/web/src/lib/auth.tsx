@@ -32,6 +32,18 @@ function readCache(uid: string): Cached | null {
 function writeCache(uid: string, v: Omit<Cached, 'uid'>) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ uid, ...v })); } catch { /* storage unavailable */ }
 }
+/** The session supabase-js keeps in this browser (even when its access token has expired). */
+function readStoredSession(): Session | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !/^sb-.+-auth-token$/.test(k)) continue;
+      const v = JSON.parse(localStorage.getItem(k) ?? 'null') as Session | null;
+      if (v?.user?.id && v.refresh_token) return v;
+    }
+  } catch { /* storage unavailable */ }
+  return null;
+}
 function clearCache() { try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ } }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -44,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Each load gets a number; a slower, older load can never overwrite a newer one
   // (or re-write the cache after sign-out / an account switch).
   const loadSeq = useRef(0);
+  const provisional = useRef(false);   // showing the cached copy before the token could be refreshed
   const settingsRef = useRef<UserSettings | null>(null);
   settingsRef.current = settings;
 
@@ -80,13 +93,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
+    // Open at once from the last copy: offline, supabase-js first retries the token refresh
+    // for a long time, and an expired token must not look like being signed out.
+    const stored = readStoredSession();
+    const early = stored ? readCache(stored.user.id) : null;
+    if (stored && early) {
+      provisional.current = true;
+      setSession(stored); setProfile(early.profile); setSettings(early.settings); setLoading(false);
+    }
     supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return;
+      if (!data.session && early && readStoredSession()) {
+        // The token could not be refreshed (offline) but the sign-in is still stored: keep
+        // the cached copy; TOKEN_REFRESHED loads everything once the network is back.
+        return;
+      }
+      provisional.current = false;
       setSession(data.session);
-      // Open at once from the last copy (offline launches would otherwise wait for the
-      // network calls and their retries), then refresh it in the background.
-      const cached = data.session ? readCache(data.session.user.id) : null;
-      if (cached) { setProfile(cached.profile); setSettings(cached.settings); setLoading(false); }
       await load(data.session);
       if (alive) setLoading(false);
     });
@@ -96,7 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       // Defer DB calls out of the auth callback (supabase-js recommendation).
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED'
-          || event === 'MFA_CHALLENGE_VERIFIED' || event === 'PASSWORD_RECOVERY') {
+          || event === 'MFA_CHALLENGE_VERIFIED' || event === 'PASSWORD_RECOVERY'
+          || (event === 'TOKEN_REFRESHED' && provisional.current)) {
+        provisional.current = false;
         setTimeout(() => { void load(s); }, 0);
       }
     });

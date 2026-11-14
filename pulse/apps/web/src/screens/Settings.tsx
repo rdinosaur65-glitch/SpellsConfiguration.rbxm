@@ -11,6 +11,7 @@ import { useAuth } from '../lib/auth';
 import { setStepUp } from '../lib/stepup';
 import { Captcha, captchaEnabled } from '../components/Captcha';
 import { isIos, isStandalone, useInstall } from '../lib/install';
+import { disablePush, enablePush, forgetPushOnThisDevice, pushEnabled, pushSupported } from '../lib/push';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (<><h2 className="section-title">{title}</h2><div className="card">{children}</div></>);
@@ -76,6 +77,7 @@ export function Settings() {
         <Toggle label="Data saver" description="Load media only when you tap it." checked={settings.data_saver} onChange={(v) => save({ data_saver: v })} />
       </Section>
 
+      <NotificationsSection onToast={showToast} />
       <InstallCard />
       <SecuritySection onToast={showToast} email={session?.user.email ?? ''} />
       <BlockedSection onToast={showToast} />
@@ -84,7 +86,7 @@ export function Settings() {
 
       <Section title="Account">
         <div className="card-pad">
-          <Button variant="ghost" onClick={() => supabase.auth.signOut({ scope: 'local' })}>Sign out</Button>
+          <Button variant="ghost" onClick={async () => { await supabase.auth.signOut({ scope: 'local' }); void forgetPushOnThisDevice(); }}>Sign out</Button>
         </div>
       </Section>
       <DeleteAccount email={session?.user.email ?? ''} isOwner={isOwner} />
@@ -415,6 +417,51 @@ function DeleteAccount({ email, isOwner }: { email: string; isOwner: boolean }) 
           </>
         )}
       </div>
+    </Section>
+  );
+}
+
+function NotificationsSection({ onToast }: { onToast: (m: string) => void }) {
+  const { settings, updateSettings } = useAuth();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const supported = pushSupported();
+  useEffect(() => { if (supported) pushEnabled().then(setOn).catch(() => setOn(false)); else setOn(false); }, [supported]);
+  if (!settings) return null;
+  const prefs = settings.notifications;
+  const setPref = async (key: string, value: boolean) => {
+    try { await updateSettings({ notifications: { ...prefs, [key]: value } }); } catch (e) { onToast(errorMessage(e)); }
+  };
+  async function toggle(v: boolean) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (v) {
+        const r = await enablePush();
+        if (r === 'denied') onToast('Notifications are blocked for PULSE in your browser or phone settings.');
+        else if (r === 'enabled') onToast('Notifications are on for this device');
+        setOn(r === 'enabled');
+      } else {
+        await disablePush(); setOn(false); onToast('Notifications are off for this device');
+      }
+    } catch (e) { onToast(errorMessage(e)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Section title="Notifications">
+      {supported ? (
+        <Toggle label="Notifications on this device" checked={Boolean(on)} disabled={busy || on === null}
+          description="They say who it is from — never what they wrote." onChange={(v) => void toggle(v)} />
+      ) : (
+        <p className="muted small" style={{ padding: '12px 16px', margin: 0 }}>
+          {isIos() && !isStandalone()
+            ? 'On iPhone and iPad, add PULSE to your Home Screen first (Share → Add to Home Screen), then open it from there to turn on notifications.'
+            : 'Notifications are not available in this browser.'}
+        </p>
+      )}
+      <Toggle label="New chats" checked={prefs.messages !== false} onChange={(v) => void setPref('messages', v)} />
+      <Toggle label="New Snaps" checked={prefs.snaps !== false} onChange={(v) => void setPref('snaps', v)} />
+      <Toggle label="Friend requests" checked={prefs.friend_requests !== false} onChange={(v) => void setPref('friend_requests', v)} />
     </Section>
   );
 }

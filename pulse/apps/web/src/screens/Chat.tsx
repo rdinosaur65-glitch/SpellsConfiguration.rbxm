@@ -114,8 +114,10 @@ export function Chat() {
   }, [convId]);
 
   /** Load (or reload after a gap) the newest page and reconcile it with what is shown. */
+  const refreshSeq = useRef(0);
   const refresh = useCallback(async (initial: boolean) => {
     const started = Date.now();
+    const seq = ++refreshSeq.current;
     const [c, ppl, msgs] = await Promise.all([
       supabase.from('conversations').select('kind,name,expiry_mode').eq('id', convId).maybeSingle(),
       rpc<Participant[]>('conversation_participants', { p_conv: convId }),
@@ -124,6 +126,8 @@ export function Chat() {
     if (c.error) throw c.error;
     if (msgs.error) throw msgs.error;
     if (!c.data) { setError('This chat is not available.'); setMessages([]); return; }
+    // A newer catch-up refresh is on its way: this one is stale (the first load always applies).
+    if (!initial && seq !== refreshSeq.current) return;
     const rows = ((msgs.data ?? []) as Message[]).reverse();
     setConv(c.data as typeof conv);
     setPeople(ppl);
@@ -133,12 +137,17 @@ export function Chat() {
       const oldest = rows[0]?.created_at ?? '';
       const full = rows.length === PAGE;
       const byId = new Map(rows.map((r) => [r.id, r]));
+      // A full page that does not reach back to anything already on screen may leave a gap
+      // (many messages arrived while away): then start again from this page.
+      const prevServer = (prev ?? []).filter((m) => !m.local);
+      const gap = !initial && full && prevServer.length > 0 && !prevServer.some((m) => m.created_at >= oldest);
+      if (gap) setHasOlder(true);
       // A row the server did not return is kept only if it is older than a full page (loaded
       // earlier with "Load earlier messages") or arrived live after this refresh began.
       // Anything else has disappeared (expired, deleted for me, or hidden by a block).
       const kept = (prev ?? []).filter((m) => m.local
         || (!initial && !byId.has(m.id)
-            && ((full && m.created_at < oldest) || (liveAt.current.get(m.id) ?? 0) >= started)));
+            && ((full && !gap && m.created_at < oldest) || (liveAt.current.get(m.id) ?? 0) >= started)));
       const pending = pendingFor(convId).filter((o) => !rows.some((r) => r.client_msg_id === o.client_msg_id && r.sender_id === o.sender_id));
       // Server rows first, so they win over local copies of the same message.
       const merged = [...rows, ...kept, ...pending];
@@ -177,6 +186,7 @@ export function Chat() {
   // Results of queued sends (also when the Shell flushes the queue after reconnecting).
   useEffect(() => onOutbox((e) => {
     if (e.type === 'sent') {
+      liveAt.current.set(e.id, Date.now());   // confirmed now: a refresh that began earlier must keep it
       setMessages((prev) => prev && prev.map((x) => x.client_msg_id === e.clientId && x.sender_id === me
         ? { ...x, id: x.local ? e.id : x.id, local: undefined } : x));
     } else {

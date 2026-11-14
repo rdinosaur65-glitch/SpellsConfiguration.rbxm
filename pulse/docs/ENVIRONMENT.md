@@ -11,7 +11,7 @@ Nothing here costs money. Every value comes from a free account the **owner** cr
 | `VITE_SUPABASE_ANON_KEY` | Yes | Same page, "anon / publishable" key | Safe to expose: RLS protects data |
 | `VITE_TURNSTILE_SITE_KEY` | Recommended | Cloudflare Turnstile widget (free) | Turn on together with captcha in Supabase Auth |
 | `VITE_OWNER_CONTACT` | Recommended | You | How friends reach you (shown on the privacy page), e.g. an email address |
-| `VITE_VAPID_PUBLIC_KEY` | Future (push) | Generated locally (`npx web-push generate-vapid-keys`) | Not used by this beta |
+| `VITE_VAPID_PUBLIC_KEY` | For notifications | `node scripts/gen-vapid.mjs` (local, free) | Public half only; without it the Notifications switch is hidden |
 | `VITE_TURN_CREDENTIALS_URL` | Future (calls) | Open Relay dashboard (free, 20 GB/month) | Not used by this beta |
 | `VITE_STUN_URLS` | Future (calls) | Default `stun:stun.l.google.com:19302` | Not used by this beta |
 
@@ -20,8 +20,9 @@ Nothing here costs money. Every value comes from a free account the **owner** cr
 | Variable | Required | Notes |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Auto-provided by Supabase | Service role used by `media-url` (streaming after an authorisation RPC), `storage-janitor` and `owner-mfa-reset` |
-| `VAPID_PRIVATE_KEY` | Future (push) | Private half of the VAPID pair — not used by this beta |
-| `VAPID_SUBJECT` | Future (push) | `mailto:` address — not used by this beta |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | For notifications | The pair from `node scripts/gen-vapid.mjs`; used by `push-send` |
+| `VAPID_SUBJECT` | For notifications | `mailto:` address of a PULSE mailbox (push services may contact it) |
+| `PULSE_PUSH_TEST_PREFIXES` | Tests only | Extra allowed endpoint prefixes for a local mock push service — never set in production |
 | `TURN_API_KEY` | Future (calls) | Open Relay API key — not used by this beta |
 | `JANITOR_SECRET` | Yes | Shared secret between the pg_cron job (Vault) and `storage-janitor` |
 | `PULSE_SMTP_HOST`, `PULSE_SMTP_PORT`, `PULSE_SMTP_TLS` | For owner 2FA resets | `smtp.gmail.com`, `465`, `implicit` (ports 25/587 are blocked for Edge Functions) |

@@ -1,9 +1,10 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useMatch } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { Icon, Spinner } from './ui';
 import { useOnline } from '../lib/useOnline';
 import { LiveProvider, useChatList, useFriendRequests } from '../lib/live';
+import { resyncPush } from '../lib/push';
 
 export function Shell() {
   return <LiveProvider><ShellInner /></LiveProvider>;
@@ -11,6 +12,7 @@ export function Shell() {
 
 function ShellInner() {
   const online = useOnline();
+  useEffect(() => { void resyncPush(); }, []);   // re-attach this device's notifications to the new session
   const { items } = useChatList();
   const { requests } = useFriendRequests();
   const unread = (items ?? []).filter((c) => c.unread && !c.muted).length;

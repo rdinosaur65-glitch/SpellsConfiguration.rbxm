@@ -1,3 +1,4 @@
+import { isNetworkFailure } from '@pulse/domain';
 import { rpc } from './supabase';
 import { uploadMedia } from './media';
 import type { Message } from './types';
@@ -17,6 +18,7 @@ export type OutboxEvent =
   | { type: 'failed'; clientId: string; offline: boolean; error: unknown };
 
 let owner: string | null = null;
+let generation = 0;                            // bumped on every account change
 const queue = new Map<string, Pending>();     // by client_msg_id
 const blobs = new Map<string, Blob>();        // photo bytes for queued photos
 const inflight = new Set<string>();
@@ -27,6 +29,7 @@ export function setOutboxOwner(uid: string | null): void {
   for (const m of queue.values()) if (m.preview) URL.revokeObjectURL(m.preview);
   queue.clear(); blobs.clear(); inflight.clear(); chains.clear(); scheduled.clear();
   owner = uid;
+  generation++;                                // sends already in flight must not write back
 }
 
 export function onOutbox(l: (e: OutboxEvent) => void): () => void {
@@ -46,7 +49,7 @@ export function enqueue(m: Pending, blob?: Blob): void {
   if (blob) blobs.set(m.client_msg_id, blob);
 }
 
-const isOffline = (e: unknown) => navigator.onLine === false || /fetch|network/i.test((e as Error)?.message ?? '');
+const isOffline = (e: unknown) => isNetworkFailure(e, navigator.onLine !== false);
 
 /** Per-chat send chain: one message at a time, in queue order. */
 const chains = new Map<string, Promise<void>>();
@@ -91,6 +94,7 @@ async function send(clientId: string): Promise<void> {
   }
   inflight.add(clientId);
   queue.set(clientId, { ...m, local: 'sending' });
+  const gen = generation;
   try {
     const blob = m.kind === 'photo' ? blobs.get(clientId) : undefined;
     if (m.kind === 'photo' && !blob) throw new Error('invalid_media');
@@ -99,11 +103,11 @@ async function send(clientId: string): Promise<void> {
       p_conv: m.conversation_id, p_kind: m.kind, p_body: m.body, p_client_msg_id: m.client_msg_id,
       p_media_asset: asset, p_reply_to: m.reply_to_id,
     });
-    if (owner !== sender) return;           // signed out meanwhile: forget it
+    if (gen !== generation || owner !== sender) return;   // signed out (or switched) meanwhile: forget it
     queue.delete(clientId); blobs.delete(clientId);
     emit({ type: 'sent', clientId, id });
   } catch (error) {
-    if (owner !== sender) return;
+    if (gen !== generation || owner !== sender) return;
     const offline = isOffline(error);
     if (offline) queue.set(clientId, { ...m, local: 'failed' });
     else { queue.delete(clientId); }       // the chat keeps it on screen with Retry

@@ -108,14 +108,46 @@ Also fixed: a 50 MB backup could be uploaded but never downloaded (per-person sh
 than the largest file) — the first download of a day is now always allowed (0023, test 75);
 live rows older than the loaded window no longer slip into a long chat out of order.
 
+## 4b. Push notifications
+
+New chats, Snaps and friend requests now arrive as notifications, at €0, using standard Web
+Push with VAPID keys you generate locally (`node scripts/gen-vapid.mjs`) — no Firebase or
+other account. Works on Android and desktop Chrome/Edge/Firefox, and on iPhone/iPad for PULSE
+added to the Home Screen (iOS 16.4+). Notifications say who it is from and "New Chat" / "New
+Snap", never the text. They respect mutes, blocks and the per-category switches in Settings →
+Notifications, go only to devices that are still signed in to that account, and only to real
+push services. Migration 0028, Edge Function `push-send` (encryption and signing with WebCrypto,
+no dependencies), service-worker handlers, Settings section.
+
+Tests: SQL 78 (subscription validation incl. internal/look-alike URLs, queueing, content,
+mutes, settings, blocks, groups, friend requests, signed-out devices, 404/410 cleanup);
+`functions.test.mjs` (a mock push service checks the VAPID signature and decrypts the payload
+with the device key; 410 removes a device; nothing after sign-out); e2e `push.spec.ts`
+(turn on in Settings → Amy's message arrives encrypted as "Amy · New Chat" without the text →
+the service worker shows it → "New chats" off stops pushes → turning off removes the device).
+
+## 4c. Last review of today's web changes (all verified, all fixed)
+- On iPhone a dropped connection ("Load failed") was treated as a refusal, so the outbox
+  discarded the message and let later ones overtake it → network failures are recognised in
+  every browser's wording (`isNetworkFailure`, unit-tested).
+- Opening the installed app offline more than an hour after the last token refresh showed a
+  25-second spinner, then Sign in, and wiped the cached profile → it opens at once from the
+  stored sign-in and cached profile and reloads when the token refreshes (e2e).
+- A refresh could drop your own just-sent message, or an older refresh finishing last could
+  remove newer rows → confirmed sends count as live; stale refreshes are ignored.
+- More than 200 messages arriving while a chat sat in the background left a gap → detected;
+  the view starts again from the newest page with "Load earlier" available.
+- Signing out mid-send and back in could resurrect a discarded message → an account-change
+  generation counter stops in-flight sends from writing back.
+
 ## 5. Test results (this workspace, final commit)
 
 | Suite | Result |
 |---|---|
-| Domain unit tests | 9/9 |
-| SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 13/13 files (incl. concurrency races 1–8) |
-| SQL + Edge Functions on the real local Supabase stack | 14/14 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email) |
-| Playwright end-to-end (built PWA + local stack) | 20 passed, 1 skipped (the screenshot capture, by design) |
+| Domain unit tests | 11/11 |
+| SQL on plain Postgres 16 + shim (`scripts/test-db.sh`) | 14/14 files (incl. push test 78 and concurrency races 1–8) |
+| SQL + Edge Functions on the real local Supabase stack | 15/15 (incl. `functions.test.mjs`: media-url, storage-janitor, owner-mfa-reset with real email, push-send against a mock push service) |
+| Playwright end-to-end (built PWA + local stack) | 21 passed, 1 skipped (the screenshot capture, by design) |
 | GitHub Actions | `unit` ✅ and `supabase-e2e` ✅ confirmed by GitHub on runs #10 and #11 |
 
 ## 6. Remaining limitations and risks (honest list)
@@ -136,8 +168,8 @@ live rows older than the loaded window no longer slip into a long chat out of or
 - A human security review is still recommended before inviting people.
 
 ## 7. Not in this beta (planned)
-Video Snaps, voice notes, Stories, streaks, Memories backup and Vault, calls, push
-notifications, map/location, reactions/search/gallery UI (the RPCs exist and are tested),
+Video Snaps, voice notes, Stories, streaks, Memories backup and Vault, calls,
+map/location, reactions/search/gallery UI (the RPCs exist and are tested),
 Google sign-in (needs the owner's free OAuth credentials); Apple sign-in is not possible at €0.
 
 ## 8. Free-tier capacity (Supabase Free, Cloudflare Pages Free, Gmail SMTP)
@@ -159,9 +191,9 @@ Follow `docs/LAUNCH_GUIDE.md`; in order:
 2. Gmail account for PULSE with an app password → Supabase Auth SMTP (port 465).
 3. Auth settings and the two email templates; minimum 60 s between emails.
 4. Optional but recommended: Cloudflare Turnstile (site key + secret).
-5. `npx supabase functions deploy media-url storage-janitor owner-mfa-reset`, set
-   `JANITOR_SECRET` and the `PULSE_SMTP_*` secrets (a PULSE mailbox, not your own address),
-   create the two Vault secrets.
+5. `npx supabase functions deploy media-url storage-janitor owner-mfa-reset push-send`, set
+   `JANITOR_SECRET`, the `PULSE_SMTP_*` secrets (a PULSE mailbox, not your own address) and
+   the VAPID keys from `node scripts/gen-vapid.mjs`; create the two Vault secrets.
 6. Cloudflare Pages: connect the repository, root `pulse`, build `npm run build -w @pulse/web`,
    output `apps/web/dist`, the `VITE_*` variables; set Site/Redirect URL to the exact address.
 7. Sign up, set yourself as owner by id, **turn on 2FA** (required for the Owner panel).

@@ -105,7 +105,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Reports (user/message/group) with evidence snapshots | ✅ (user + message reporting in UI) |
 | Owner panel RPCs; ban enforcement; account deletion workflow | ✅ (deletion in Settings UI) |
 | Owner panel UI (usage, reports, suspend/ban/restore/delete, audit log) | ✅ (e2e) |
-| Calls, push, map/location | ⬜ |
+| Push notifications (Web Push/VAPID; new chats, Snaps, friend requests; per-category settings; mutes/blocks respected; no message text) | ✅ (0028, push-send; tests 78, functions.test.mjs with a mock push service, e2e push) |
+| Calls, map/location | ⬜ |
 
 ## Phase 7 — Hardening
 Security review: 🟠 → multi-agent adversarial reviews done (report 3: 97 confirmed findings;

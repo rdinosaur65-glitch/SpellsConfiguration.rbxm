@@ -38,6 +38,7 @@ export function Privacy() {
         <li>If you block someone, they lose your chat at once. You keep it, marked “Blocked”, until you tap ×, which removes it from your list only — nothing is deleted, and their copy of the chat is not touched.</li>
         <li>Messages are protected in transit and at rest by the hosting provider, but they are <strong>not end-to-end encrypted</strong>.</li>
         <li>No ads, no trackers, no selling of data. Photos are re-encoded on your device, which removes location data.</li>
+        <li>If you turn on notifications, your browser's push service (from Google, Apple, Mozilla or Microsoft) delivers them. They are encrypted for your device and only say who something is from — never what they wrote.</li>
       </ul>
 
       <h2 className="section-title">Deleting your account</h2>

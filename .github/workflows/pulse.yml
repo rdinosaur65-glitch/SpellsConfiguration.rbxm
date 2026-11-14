@@ -52,6 +52,11 @@ jobs:
             # Mail goes to the stack's own Mailpit (no external service, nothing sent out).
             printf 'PULSE_SMTP_HOST=inbucket\nPULSE_SMTP_PORT=1025\nPULSE_SMTP_TLS=none\n'
             printf 'PULSE_SMTP_FROM=no-reply@pulse.local\nPULSE_SMTP_FROM_NAME=PULSE\n'
+            # Throwaway VAPID keys; pushes go to a mock push service the tests run on the host.
+            node scripts/gen-vapid.mjs
+            printf 'VAPID_SUBJECT=mailto:no-reply@pulse.local\n'
+            printf 'PULSE_PUSH_TEST_PREFIXES=http://%s:\n' \
+              "$(docker network inspect supabase_network_pulse -f '{{(index .IPAM.Config 0).Gateway}}')"
           } > supabase/functions/.env
           nohup npx supabase functions serve --env-file supabase/functions/.env > /tmp/functions.log 2>&1 &
           for i in $(seq 1 60); do
@@ -66,8 +71,9 @@ jobs:
       - name: Playwright end-to-end
         working-directory: pulse/apps/web
         run: |
-          printf 'VITE_SUPABASE_URL=http://127.0.0.1:54321\nVITE_SUPABASE_ANON_KEY=%s\n' \
-            "$(npx supabase status -o env | sed -n 's/^ANON_KEY="\(.*\)"$/\1/p')" > .env.local
+          printf 'VITE_SUPABASE_URL=http://127.0.0.1:54321\nVITE_SUPABASE_ANON_KEY=%s\nVITE_VAPID_PUBLIC_KEY=%s\n' \
+            "$(npx supabase status -o env | sed -n 's/^ANON_KEY="\(.*\)"$/\1/p')" \
+            "$(sed -n 's/^VAPID_PUBLIC_KEY=//p' ../../supabase/functions/.env)" > .env.local
           npx playwright test --trace off
       - if: always()
         run: npm run sb:stop

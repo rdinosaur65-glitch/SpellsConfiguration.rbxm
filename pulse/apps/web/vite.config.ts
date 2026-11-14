@@ -64,6 +64,7 @@ export default defineConfig(({ mode }) => ({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/auth\//, /^\/rest\//, /^\/storage\//, /^\/functions\//],
         runtimeCaching: [],
+        importScripts: ['push-sw.js'],        // push + notificationclick handlers
       },
     }),
   ],

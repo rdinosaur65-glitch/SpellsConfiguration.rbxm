@@ -5,7 +5,8 @@
 // JANITOR_SECRET (defaults to supabase/functions/.env).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { createDecipheriv, createECDH, createHash, createHmac, createPublicKey, hkdfSync, randomBytes, randomUUID, verify as verifySig } from 'node:crypto';
+import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -307,5 +308,112 @@ test('2FA reset of another account needs the code emailed to the owner', async (
     assert.equal(sql(`select count(*) from auth.mfa_factors where user_id = '${other.id}'`), '1', 'nothing reset');
   } finally {
     sql('update private.platform_config set owner_user_id = null');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Push notifications (push-send + migration 0028) against a mock push service that checks
+// the VAPID signature and decrypts the payload with the device's private key.
+// ---------------------------------------------------------------------------
+const envText = existsSync(envFile) ? readFileSync(envFile, 'utf8') : '';
+const envVal = (k) => process.env[k] ?? new RegExp(`^${k}=(.+)$`, 'm').exec(envText)?.[1]?.trim();
+
+function decryptPush(body, ecdh, authSecret) {
+  const salt = body.subarray(0, 16);
+  const idlen = body[20];
+  const asPub = body.subarray(21, 21 + idlen);
+  const ct = body.subarray(21 + idlen);
+  const secret = ecdh.computeSecret(asPub);
+  const ikm = Buffer.from(hkdfSync('sha256', secret, authSecret,
+    Buffer.concat([Buffer.from('WebPush: info\0'), ecdh.getPublicKey(), asPub]), 32));
+  const cek = Buffer.from(hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+  const nonce = Buffer.from(hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12));
+  const d = createDecipheriv('aes-128-gcm', cek, nonce);
+  d.setAuthTag(ct.subarray(ct.length - 16));
+  const pt = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
+  assert.equal(pt[pt.length - 1], 2, 'single final record');
+  return pt.subarray(0, pt.length - 1).toString('utf8');
+}
+
+test('push notifications are signed, encrypted, and only reach signed-in devices', async () => {
+  const vapidPub = envVal('VAPID_PUBLIC_KEY'), prefixes = envVal('PULSE_PUSH_TEST_PREFIXES');
+  assert.ok(vapidPub && prefixes, 'VAPID_PUBLIC_KEY and PULSE_PUSH_TEST_PREFIXES must be in supabase/functions/.env');
+  const gw = /^http:\/\/([^:/]+):/.exec(prefixes)?.[1];
+  const received = [];
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      received.push({ url: req.url, headers: req.headers, body: Buffer.concat(chunks) });
+      res.statusCode = req.url.startsWith('/gone/') ? 410 : 201;
+      res.end();
+    });
+  });
+  await new Promise((r) => server.listen(0, '0.0.0.0', r));
+  const base = `http://${gw}:${server.address().port}`;
+  sql(`update private.platform_config set push_test_prefixes = array['${base}/']`);
+  sql(`delete from vault.secrets where name in ('pulse_janitor_url', 'pulse_janitor_secret')`);
+  sql(`select vault.create_secret('http://kong:8000/functions/v1/storage-janitor', 'pulse_janitor_url')`);
+  sql(`select vault.create_secret('${JANITOR_SECRET}', 'pulse_janitor_secret')`);
+  const waitFor = async (pred, ms = 15000) => {
+    for (const end = Date.now() + ms; Date.now() < end;) { if (pred()) return true; await new Promise((r) => setTimeout(r, 200)); }
+    return false;
+  };
+  try {
+    const a = await newUser('pua'), b = await newUser('pub');
+    await befriend(a, b);
+    const ecdh = createECDH('prime256v1'); ecdh.generateKeys();
+    const authSecret = randomBytes(16);
+    const keys = { p_p256dh: ecdh.getPublicKey().toString('base64url'), p_auth: authSecret.toString('base64url') };
+    const device = `${base}/push/${randomUUID()}`, stale = `${base}/gone/${randomUUID()}`;
+
+    const bad = await call('/rest/v1/rpc/save_push_subscription', { token: b.token, body: { p_endpoint: 'http://kong:8000/rest/v1/x', ...keys } });
+    assert.ok(bad.status >= 400 && JSON.stringify(bad.data).includes('push_endpoint_invalid'), 'arbitrary URLs refused');
+    await rpc(b.token, 'save_push_subscription', { p_endpoint: device, ...keys });
+    await rpc(b.token, 'save_push_subscription', { p_endpoint: stale, ...keys });
+
+    const conv = await rpc(a.token, 'create_direct_conversation', { p_friend: b.id });
+    await rpc(a.token, 'send_message', { p_conv: conv, p_kind: 'text', p_body: 'very private words', p_client_msg_id: randomUUID() });
+    assert.ok(await waitFor(() => received.some((r) => r.url.startsWith('/push/'))), 'push delivered to the device');
+    const r = received.find((x) => x.url.startsWith('/push/'));
+    assert.equal(r.headers['content-encoding'], 'aes128gcm');
+    assert.ok(Number(r.headers.ttl) > 0);
+
+    // VAPID: signed by our key, for this push service, not expired.
+    const m = /^vapid t=([^,]+), k=(.+)$/.exec(r.headers.authorization ?? '');
+    assert.ok(m, 'VAPID authorization header');
+    assert.equal(m[2], vapidPub);
+    const [h, c, sig] = m[1].split('.');
+    const claims = JSON.parse(Buffer.from(c, 'base64url').toString());
+    assert.equal(claims.aud, base);
+    assert.ok(claims.exp > Date.now() / 1000 && claims.exp < Date.now() / 1000 + 24 * 3600);
+    assert.match(claims.sub, /^(mailto:|https:)/);
+    const raw = Buffer.from(vapidPub, 'base64url');
+    const pubKey = createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: raw.subarray(1, 33).toString('base64url'),
+      y: raw.subarray(33).toString('base64url') }, format: 'jwk' });
+    assert.ok(verifySig('sha256', Buffer.from(`${h}.${c}`), { key: pubKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url')),
+      'VAPID signature verifies');
+
+    // Payload: who and "New Chat" only — never the message text.
+    const text = decryptPush(r.body, ecdh, authSecret);
+    assert.ok(!text.includes('very private'), 'no message text in the notification');
+    assert.deepEqual(JSON.parse(text), {
+      title: sql(`select display_name from public.profiles where id = '${a.id}'`), body: 'New Chat',
+      url: `/chats/${conv}`, tag: `chat:${conv}` });
+
+    // The push service said the second device is gone: it is removed.
+    assert.ok(await waitFor(() => sql(`select count(*) from private.push_subscriptions where endpoint = '${stale}'`) === '0'),
+      'stale subscription removed after 410');
+
+    // b signs out on that device: nothing more is sent there.
+    const out = await call('/auth/v1/logout?scope=local', { token: b.token });
+    assert.ok(out.status < 300, `logout ${out.status}`);
+    const before = received.length;
+    await rpc(a.token, 'send_message', { p_conv: conv, p_kind: 'text', p_body: 'after sign-out', p_client_msg_id: randomUUID() });
+    await new Promise((res) => setTimeout(res, 3000));
+    assert.equal(received.length, before, 'no push to a signed-out device');
+  } finally {
+    server.close();
+    sql(`update private.platform_config set push_test_prefixes = '{}'`);
   }
 });

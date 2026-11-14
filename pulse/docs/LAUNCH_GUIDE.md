@@ -63,9 +63,9 @@ Follow the list in `docs/ENVIRONMENT.md` → "Supabase Auth settings". In short:
 3. Put the **site key** in Cloudflare Pages as `VITE_TURNSTILE_SITE_KEY` (step 6).
    Do 2 and 3 together: captcha on without the site key means nobody can sign in.
 
-## 5. Edge Functions (photos, Snaps, owner 2FA resets)
+## 5. Edge Functions (photos, Snaps, notifications, owner 2FA resets)
 ```sh
-npx supabase functions deploy media-url storage-janitor owner-mfa-reset
+npx supabase functions deploy media-url storage-janitor owner-mfa-reset push-send
 npx supabase secrets set JANITOR_SECRET=<a long random string>
 ```
 The owner-mfa-reset function emails you a confirmation code whenever you reset someone's
@@ -81,7 +81,16 @@ person being reset, so it must not come from you. The function refuses to run if
 is your own address. The code itself goes to the email address of your owner account, and
 the reset does not happen unless that email is delivered and you type the code within
 5 minutes.
-Then in Supabase → **SQL Editor**, run once (same random string as above):
+**Push notifications** (free, standard Web Push — no Firebase or other account needed):
+```sh
+node scripts/gen-vapid.mjs          # prints VAPID_PUBLIC_KEY=… and VAPID_PRIVATE_KEY=… (runs locally)
+npx supabase secrets set VAPID_PUBLIC_KEY=<public> VAPID_PRIVATE_KEY=<private> VAPID_SUBJECT=mailto:<the PULSE Gmail address>
+```
+and put the same public key in Cloudflare Pages as `VITE_VAPID_PUBLIC_KEY` (step 6). Keep the
+private key secret; if you ever change the keys, everyone has to turn notifications on again.
+
+Then in Supabase → **SQL Editor**, run once (same random string as above; the notification
+function uses the same two secrets, so there is nothing extra to add for it):
 ```sql
 select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/storage-janitor', 'pulse_janitor_url');
 select vault.create_secret('<the same long random string>', 'pulse_janitor_secret');
@@ -96,7 +105,7 @@ select vault.create_secret('<the same long random string>', 'pulse_janitor_secre
    · **Output directory** `apps/web/dist`.
 3. Environment variables: `NODE_VERSION=22`, `VITE_SUPABASE_URL=<Project URL>`,
    `VITE_SUPABASE_ANON_KEY=<anon key>`, `VITE_TURNSTILE_SITE_KEY=<site key>` (if step 4),
-   `VITE_OWNER_CONTACT=<how friends reach you, e.g. an email>`.
+   `VITE_OWNER_CONTACT=<how friends reach you, e.g. an email>`, `VITE_VAPID_PUBLIC_KEY=<public key from step 5>`.
 4. Deploy. Note the address (e.g. `https://pulse-abc.pages.dev`) and finish step 3's URL
    settings with it.
 
@@ -119,6 +128,8 @@ With a second email address (or a friend):
 - [ ] Send a message, a photo, and a Snap from the Camera tab; view and replay the Snap.
 - [ ] "Forgot password?" email arrives and works.
 - [ ] Owner panel shows usage; reporting the test account shows up there.
+- [ ] Settings → Notifications on (on iPhone: from the Home Screen app); a message from the
+      other account shows a notification "<name> · New Chat" while PULSE is closed.
 
 ## 9. Invite friends — and keep it friends-only
 Anyone who has the app's address can sign up; PULSE has no invite codes. Keep the beta
@@ -161,6 +172,6 @@ installs it like an app.
   (refuse new writes or uploads) before it would need a paid tier.
 
 ## What is not in this beta
-Video Snaps, voice notes, Stories, streaks, Memories backup, calls, push notifications,
+Video Snaps, voice notes, Stories, streaks, Memories backup, calls,
 the map, and Google/Apple sign-in (see `docs/CHECKLIST.md`). Push notifications in
 particular: friends only see new messages when they open the app.

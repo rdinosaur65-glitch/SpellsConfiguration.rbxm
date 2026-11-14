@@ -70,5 +70,24 @@ test('installed app opens offline from the service worker', async ({ page, conte
   await expect(page.getByTestId('my-username')).toBeVisible();     // from the local profile copy
   await page.getByRole('link', { name: /^Chats/ }).click();
   await expect(page.getByRole('alert')).toContainText('offline');
+  // Reopened offline long after the last token refresh (access token expired): still opens
+  // at once from the local copy, and is not signed out.
+  await page.evaluate(() => {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      if (/^sb-.+-auth-token$/.test(k)) {
+        const v = JSON.parse(localStorage.getItem(k)!);
+        v.expires_at = Math.floor(Date.now() / 1000) - 7200;
+        localStorage.setItem(k, JSON.stringify(v));
+      }
+    }
+  });
+  await page.reload();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({ timeout: 3000 });
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByTestId('my-username')).toBeVisible();
   await context.setOffline(false);
+  // Back online, the token is refreshed and the app keeps working (not sent to Sign in).
+  await page.reload();
+  await expect(page.getByTestId('my-username')).toBeVisible();
 });

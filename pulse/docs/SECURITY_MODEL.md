@@ -12,7 +12,8 @@
     only for the steps the database reserves to it (issuing and carrying out a reset).
   - `storage-janitor` is called only by the database's pg_cron job, authenticated by a
     shared secret kept in Vault and in the function's secrets (`JANITOR_SECRET`).
-  There is no push-notification function yet.
+  - `push-send` is called by the database (pg_net, same shared secret) to deliver queued
+    notifications with Web Push (VAPID-signed, payload encrypted per RFC 8291).
 
 ## Two-step verification (migration 0013)
 Once a user has a *verified* TOTP factor, the database requires an `aal2` session
@@ -98,6 +99,21 @@ immediately, not when its JWT expires. Its own state is readable only through
   refund a view that was shown nor serve bytes for a view that was refunded (0024).
 - Honest limitation: once bytes reach a device they can be captured (screenshots,
   screen recording, devtools). Saving permission is an in-app rule only.
+
+## Push notifications (migration 0028)
+- Standard Web Push: the browser's own push service (Google, Mozilla, Apple, Microsoft)
+  delivers; PULSE signs with its VAPID key and encrypts every payload for the device.
+- A notification carries only who it is from and "New Chat" / "New Snap" (or "New friend
+  request") — never message text, matching the no-preview chat list.
+- Subscriptions are stored privately per account **and per sign-in session**: a device gets
+  pushes only while that session exists, so signing out, "sign out everywhere", an owner 2FA
+  reset or account deletion stops them. Re-attaching after a new sign-in happens only for
+  the same account. At most 10 devices per account.
+- Mutes, blocks (either way), account state and each person's notification settings are
+  checked when each push is prepared.
+- Endpoints must be on a known push service (`push_endpoint_allowed`, checked again in the
+  function): a user cannot make the server send requests to arbitrary or internal URLs.
+- Push services that answer 404/410 have their subscription removed.
 
 ## Owner
 - Identified by UUID in `private.platform_config`, never by username.

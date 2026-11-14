@@ -316,3 +316,9 @@ button.streak::after { content: ''; position: absolute; inset: -8px -6px; }
 .cam-save { background: rgb(0 0 0 / .55); color: #fff; border-color: rgb(255 255 255 / .25); }
 .admin-row { flex-wrap: wrap; }
 .admin-row > .grow { flex: 1 1 100%; }
+/* Small phones: a friend request's buttons go under the name instead of squeezing it. */
+@media (max-width: 400px) {
+  .request-row { flex-wrap: wrap; }
+  .request-row > .grow { flex: 1 1 calc(100% - 60px); }
+  .request-row > .btn { margin-left: 56px; }
+}

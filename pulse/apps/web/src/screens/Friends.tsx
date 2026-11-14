@@ -129,7 +129,7 @@ export function Friends() {
           <h2 className="section-title">Friend requests · {incoming.length}</h2>
           <div className="list">
             {incoming.map((r) => (
-              <div key={r.id} className="list-item" data-testid="incoming-request">
+              <div key={r.id} className="list-item request-row" data-testid="incoming-request">
                 <Avatar name={r.display_name} />
                 <div className="grow">
                   <div className="list-title truncate">{r.display_name}</div>

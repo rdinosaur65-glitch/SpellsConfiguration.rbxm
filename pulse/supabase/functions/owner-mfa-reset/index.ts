@@ -13,7 +13,7 @@ import { CORS, SERVICE_KEY, UUID, json, rpc } from '../_shared/http.ts';
 import { sendMail } from '../_shared/smtp.ts';
 
 const STATUS: Record<string, number> = {
-  not_authenticated: 401, mfa_required: 401, forbidden: 403, reauthentication_required: 401,
+  not_authenticated: 401, mfa_required: 401, forbidden: 403, owner_mfa_required: 403, reauthentication_required: 401,
   rate_limited: 429, reason_required: 400, user_not_found: 404, cannot_moderate_owner: 400,
   owner_email_unverified: 409, request_not_found: 404,
 };

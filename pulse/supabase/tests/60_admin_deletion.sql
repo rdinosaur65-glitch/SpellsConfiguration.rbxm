@@ -21,7 +21,7 @@ begin
   conv := public.create_direct_conversation(w);
   perform public.set_chat_expiry(conv, 'never');
   msg := public.send_message(conv, 'text', 'abusive text', gen_random_uuid());
-  perform test.as_user(o);
+  perform test.as_user(o, '{"aal":"aal2"}');
   perform test.throws(format($q$select public.report_message(%L, 'harassment')$q$, msg), 'message_not_found',
                       'cannot report unseen content');
   perform test.ok((select count(*) from public.messages where id = msg) = 0, 'owner has no chat access');
@@ -29,7 +29,7 @@ begin
   rep := public.report_message(msg, 'harassment', 'please review');
   perform test.ok((select count(*) from public.reports where id = rep) = 1, 'reporter sees own report');
 
-  perform test.as_user(o);
+  perform test.as_user(o, '{"aal":"aal2"}');
   perform test.ok((select evidence->>'body' from public.admin_list_reports('open') where id = rep) = 'abusive text',
                   'owner sees authorised evidence');
   perform test.ok((select (admin_usage_summary()->>'accounts')::int) >= 3, 'aggregate analytics');
@@ -38,7 +38,7 @@ begin
   perform test.as_superuser();
   insert into auth.sessions (id, user_id) values (gen_random_uuid(), u) returning id into s1;
   insert into auth.sessions (id, user_id) values (gen_random_uuid(), u) returning id into s2;
-  perform test.as_user(o);
+  perform test.as_user(o, '{"aal":"aal2"}');
   perform test.throws(format($q$select public.admin_set_account_state(%L, 'banned', '')$q$, u), 'reason_required',
                       'reason required');
   perform test.throws(format($q$select public.admin_set_account_state(%L, 'banned', 'x')$q$, o), 'cannot_moderate_owner',

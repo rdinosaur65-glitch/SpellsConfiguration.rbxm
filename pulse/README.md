@@ -20,7 +20,7 @@ docs/                architecture, €0 plan, security, checklist, reports
 ```bash
 npm install
 npm run sb:start                      # local Supabase: DB, Auth, Realtime, Storage, mail catcher
-cp .env.example apps/web/.env.local   # fill in VITE_SUPABASE_ANON_KEY from `npx supabase status`
+cp .env.example apps/web/.env.local   # set VITE_SUPABASE_URL=http://127.0.0.1:54321 and VITE_SUPABASE_ANON_KEY from `npx supabase status`
 npm run dev -w @pulse/web             # http://127.0.0.1:5173 — confirmation emails at http://127.0.0.1:54324
 ```
 

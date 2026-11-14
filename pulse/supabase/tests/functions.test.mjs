@@ -5,7 +5,7 @@
 // JANITOR_SECRET (defaults to supabase/functions/.env).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,6 +50,34 @@ async function newUser(tag) {
   const s = await call('/auth/v1/token?grant_type=password', { body: { email, password: 'pulse-test-123' } });
   assert.equal(s.status, 200, JSON.stringify(s.data));
   return { id: created.data.id, token: s.data.access_token };
+}
+
+/** RFC 6238 TOTP (SHA-1, 30 s, 6 digits) from a base32 secret. */
+function totp(secretB32, at = Date.now()) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const ch of secretB32.replace(/=+$/, '').toUpperCase()) {
+    const v = alphabet.indexOf(ch);
+    if (v >= 0) bits += v.toString(2).padStart(5, '0');
+  }
+  const key = Buffer.from((bits.match(/.{8}/g) ?? []).map((b) => parseInt(b, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(at / 1000 / 30)));
+  const h = createHmac('sha1', key).update(counter).digest();
+  const off = h[h.length - 1] & 0xf;
+  return ((h.readUInt32BE(off) & 0x7fffffff) % 1_000_000).toString().padStart(6, '0');
+}
+
+/** Turns on TOTP for the user through GoTrue and returns an aal2 access token. */
+async function withTotp(user) {
+  const f = await call('/auth/v1/factors', { token: user.token, body: { factor_type: 'totp', friendly_name: 'test' } });
+  assert.equal(f.status, 200, JSON.stringify(f.data));
+  const ch = await call(`/auth/v1/factors/${f.data.id}/challenge`, { token: user.token, body: {} });
+  assert.equal(ch.status, 200, JSON.stringify(ch.data));
+  const v = await call(`/auth/v1/factors/${f.data.id}/verify`, {
+    token: user.token, body: { challenge_id: ch.data.id, code: totp(f.data.totp.secret) } });
+  assert.equal(v.status, 200, JSON.stringify(v.data));
+  return { ...user, aal1: user.token, token: v.data.access_token };
 }
 
 async function befriend(a, b) {
@@ -193,9 +221,18 @@ const resetFn = (token, body) => call('/functions/v1/owner-mfa-reset', { token, 
 const emailOf = (id) => sql(`select email from auth.users where id = '${id}'`);
 
 test('2FA reset of another account needs the code emailed to the owner', async () => {
-  const owner = await newUser('mfo'), target = await newUser('mft'), other = await newUser('mfx');
+  const target = await newUser('mft'), other = await newUser('mfx');
+  let owner = await newUser('mfo');
   sql(`update private.platform_config set owner_user_id = '${owner.id}'`);
   try {
+    // Owner powers need the owner's own 2FA (an aal2 session).
+    const noMfa = await resetFn(owner.token, { action: 'request', target_id: target.id, reason: 'x' });
+    assert.equal(noMfa.status, 403);
+    assert.equal(noMfa.data.error, 'owner_mfa_required');
+    owner = await withTotp(owner);
+    const aal1 = await resetFn(owner.aal1, { action: 'request', target_id: target.id, reason: 'x' });
+    assert.equal(aal1.status, 401, 'a password-only session of a 2FA owner is refused');
+
     sql(`insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
          values (gen_random_uuid(), '${target.id}', 'phone', 'totp', 'verified', now(), now())`);
     const started = Date.now() - 1000;

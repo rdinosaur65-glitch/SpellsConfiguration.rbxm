@@ -238,7 +238,7 @@ begin
                       'friends cannot read moderation state');
   perform test.ok((select account_state from public.my_profile()) = 'active', 'own state via my_profile');
 
-  perform test.as_user(o);
+  perform test.as_user(o, '{"aal":"aal2"}');
   perform public.admin_set_account_state(u, 'suspended', 'test');
   perform test.as_user(u);   -- JWT still valid for up to an hour
   perform test.ok((select count(*) from public.messages) = 0, 'suspended: messages hidden immediately');
@@ -248,7 +248,7 @@ begin
 
   perform test.as_superuser();
   update public.profiles set account_state = 'deleting' where id = u;
-  perform test.as_user(o);
+  perform test.as_user(o, '{"aal":"aal2"}');
   perform test.throws(format($q$select public.admin_set_account_state(%L, 'active', 'oops')$q$, u), 'account_deleting',
                       'cannot restore an account being deleted');
 
@@ -477,7 +477,7 @@ end $$;
 do $$
 declare u uuid; big uuid; small uuid;
 begin
-  update private.platform_config set daily_egress_user_bytes = 41943040;   -- the shipped default
+  update private.platform_config set daily_egress_user_bytes = 26214400;   -- the shipped default (0024)
   u := test.new_user('egbig_75');
   big := test.upload(u, 'vault_backup', 'application/octet-stream', 50 * 1048576);
   small := test.upload(u, 'chat', 'image/jpeg', 1000);

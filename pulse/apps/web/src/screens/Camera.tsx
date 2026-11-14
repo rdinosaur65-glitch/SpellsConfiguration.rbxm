@@ -180,7 +180,7 @@ function SendSnap({ canvas, onClose, onSent }: { canvas: HTMLCanvasElement; onCl
   }
 
   return (
-    <Sheet label="Send Snap" onClose={onClose} style={{ maxHeight: '85vh', overflowY: 'auto', color: 'var(--text)' }}>
+    <Sheet label="Send Snap" onClose={onClose} style={{ color: 'var(--text)' }}>
       <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>Send Snap</h2>
       {error && <Banner>{error}</Banner>}
       <span className="field-label" style={{ margin: '0 4px' }}>Timer</span>

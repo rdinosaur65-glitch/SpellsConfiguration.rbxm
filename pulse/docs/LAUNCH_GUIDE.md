@@ -55,7 +55,9 @@ Follow the list in `docs/ENVIRONMENT.md` → "Supabase Auth settings". In short:
   wildcard like `https://*.pages.dev/**`. (You can come back to this after step 6.)
 
 ## 4. Bot protection — Cloudflare Turnstile (free, recommended)
-1. Create a free Cloudflare account → **Turnstile** → add a widget for your app's domain.
+1. Create a free Cloudflare account → **Turnstile** → add a widget. Its hostname is your
+   app's `*.pages.dev` address from step 6: pick the Pages project name first (or add the
+   hostname to the widget after step 6).
 2. Supabase → Authentication → **Bot and Abuse Protection**: enable captcha, provider
    Turnstile, paste the **secret key**.
 3. Put the **site key** in Cloudflare Pages as `VITE_TURNSTILE_SITE_KEY` (step 6).
@@ -104,8 +106,9 @@ select vault.create_secret('<the same long random string>', 'pulse_janitor_secre
    ```sql
    update private.platform_config set owner_user_id = '<your id>';
    ```
-3. In the app: Settings → **turn on two-step verification**. Settings now shows **Owner
-   panel** (usage meters, reports, suspensions, audit log).
+3. In the app: Settings → **turn on two-step verification**. This is required: the Owner
+   panel (usage meters, reports, suspensions, 2FA resets, audit log) only works in a
+   session confirmed with your own authenticator code.
 4. Read Settings → Privacy and rules once; adjust the wording in
    `apps/web/src/screens/Privacy.tsx` if you want, and redeploy.
 
@@ -117,24 +120,42 @@ With a second email address (or a friend):
 - [ ] "Forgot password?" email arrives and works.
 - [ ] Owner panel shows usage; reporting the test account shows up there.
 
-## 9. Invite friends
-Share the app address. On phones, "Add to Home Screen" installs it like an app.
-- Up to **50 accounts** by default (free-tier safety cap; change with
-  `update private.platform_config set registration_cap = <n>;`).
+## 9. Invite friends — and keep it friends-only
+Anyone who has the app's address can sign up; PULSE has no invite codes. Keep the beta
+closed with two free settings:
+1. Set the account cap to the number of people you are inviting (you included):
+   `update private.platform_config set registration_cap = <n>;` (default 50).
+2. Once everyone has joined, Supabase → Authentication → Sign In / Providers → turn off
+   **Allow new users to sign up**. Existing accounts keep signing in normally. Turn it on
+   briefly when you want to add someone.
+
+Share the app address only with the people you invite. On phones, "Add to Home Screen"
+installs it like an app.
 - Watch the Owner panel meters. At 70% of anything, tidy up. On their own, the database
   refuses new text at 90% of its 500 MB, and each storage pool refuses uploads when full
-  (the backup pool at 90%), so the project never exceeds the free plan.
+  (the backup pool at 90%), so database and file storage stay inside the free plan.
+  Downloads are capped too, but see the egress note below.
 
 ## Free-plan facts to keep in mind
-- **Inactivity pause:** Supabase pauses a Free project after about a week with no activity.
-  Any visit wakes the app's data within a minute or two; you can also resume it from the
-  dashboard. Normal use by a friend group keeps it awake.
+- **Inactivity pause:** Supabase pauses a Free project after about 7 days without
+  activity. A paused project does **not** wake up by itself: the app stops working until
+  you open the Supabase dashboard, select the project and click **Resume** (takes a few
+  minutes). Do it promptly — paused Free projects can only be restored for a limited time.
+  Normal use by a friend group keeps it awake. Optional free keep-alive: a weekly
+  scheduled GitHub Actions job that makes one request to the project (GitHub disables
+  scheduled jobs after 60 days without repository activity).
 - Two Free projects per Supabase account; PULSE needs one.
 - Capacity limits (PULSE enforces its own lower ceilings, see the Owner panel): database
-  500 MB, files 1 GB, downloads about 5 GB a month (PULSE spends at most ~160 MB a day,
-  40 MB per person after their first download of the day), 500,000 Edge Function calls a month (each photo or Snap view is one),
-  200 simultaneous live connections, 2 million realtime messages a month, 300–500 emails a
-  day depending on the SMTP choice.
+  500 MB, files 1 GB, 500,000 Edge Function calls a month (each photo or Snap view is
+  one), 200 simultaneous live connections, 2 million realtime messages a month, 300–500
+  emails a day depending on the SMTP choice.
+- Downloads (egress) are the tightest limit: about 5 GB a month. Photos and Snaps pass
+  through the media-url function, so each view counts about twice (Storage → function →
+  phone), and ordinary app traffic counts too. PULSE therefore caps media views at 70 MB a
+  day for everyone together (≈ 2.1 GB a month, ≈ 4.2 GB counted twice) and 25 MB per
+  person after their first download of the day; when the day's budget is used up, photos
+  wait until the next day while text keeps working. This is a target, not a guarantee:
+  check Supabase → **Usage → Egress** weekly during the beta.
 - None of the services above asks for a payment card on the free plan. If any of them ever
   shows an upgrade or billing screen, do not enter card details: PULSE is designed to stop
   (refuse new writes or uploads) before it would need a paid tier.

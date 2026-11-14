@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { totp } from './totp';
 
 const MAILPIT = process.env.MAILPIT_URL ?? 'http://127.0.0.1:54324';
 export const PASSWORD = 'pulse-test-123';
@@ -79,4 +80,23 @@ export async function befriendUi(a: Page, b: Page, ub: string, aDisplayName: str
   await mainNav(b, 'Friends').click();
   await b.getByTestId('incoming-request').filter({ hasText: aDisplayName }).getByRole('button', { name: 'Accept' }).click();
   await expect(b.getByTestId('friend-row').filter({ hasText: aDisplayName })).toBeVisible();
+}
+
+/** Turns on two-step verification from Settings; returns the secret and the time step used. */
+export async function enableTotp(page: Page): Promise<{ secret: string; step: number }> {
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /^Settings/ }).click();
+  await page.getByRole('button', { name: 'Set up two-step verification' }).click();
+  const secret = (await page.locator('code').first().textContent())!.trim();
+  const step = Math.floor(Date.now() / 30_000);
+  await page.getByLabel('6-digit code').fill(totp(secret));
+  await page.getByRole('button', { name: 'Verify and turn on' }).click();
+  await expect(page.getByText(/On — codes from your authenticator app/)).toBeVisible();
+  return { secret, step };
+}
+
+/** A TOTP code from a later time step than `after` (servers refuse a reused step). */
+export async function freshTotp(page: Page, secret: string, after: number): Promise<string> {
+  const wait = (after + 1) * 30_000 - Date.now();
+  if (wait > 0) await page.waitForTimeout(wait + 500);
+  return totp(secret);
 }

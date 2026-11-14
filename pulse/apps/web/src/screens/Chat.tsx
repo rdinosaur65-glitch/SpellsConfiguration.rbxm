@@ -53,6 +53,10 @@ export function Chat() {
   const bcast = useRef<RealtimeChannel | null>(null);
   const lastTypingSent = useRef(0);
   const messagesRef = useRef<UiMessage[] | null>(null);
+  /** When each row last arrived over Realtime (to tell "arrived while refreshing" from "gone"). */
+  const liveAt = useRef(new Map<string, number>());
+  /** The message that was first on screen before older ones were prepended, and where. */
+  const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
   messagesRef.current = messages;
   const hasOlderRef = useRef(false);
   hasOlderRef.current = hasOlder;
@@ -111,6 +115,7 @@ export function Chat() {
 
   /** Load (or reload after a gap) the newest page and reconcile it with what is shown. */
   const refresh = useCallback(async (initial: boolean) => {
+    const started = Date.now();
     const [c, ppl, msgs] = await Promise.all([
       supabase.from('conversations').select('kind,name,expiry_mode').eq('id', convId).maybeSingle(),
       rpc<Participant[]>('conversation_participants', { p_conv: convId }),
@@ -126,12 +131,14 @@ export function Chat() {
     void loadSnaps();
     setMessages((prev) => {
       const oldest = rows[0]?.created_at ?? '';
-      const newest = rows[rows.length - 1]?.created_at ?? '';
+      const full = rows.length === PAGE;
       const byId = new Map(rows.map((r) => [r.id, r]));
+      // A row the server did not return is kept only if it is older than a full page (loaded
+      // earlier with "Load earlier messages") or arrived live after this refresh began.
+      // Anything else has disappeared (expired, deleted for me, or hidden by a block).
       const kept = (prev ?? []).filter((m) => m.local
-        // Older than this page: keep (still on screen). Newer than the snapshot: arrived live
-        // while it was loading. Inside the page but missing: expired or gone.
-        || (!initial && !byId.has(m.id) && (m.created_at < oldest || m.created_at > newest)));
+        || (!initial && !byId.has(m.id)
+            && ((full && m.created_at < oldest) || (liveAt.current.get(m.id) ?? 0) >= started)));
       const pending = pendingFor(convId).filter((o) => !rows.some((r) => r.client_msg_id === o.client_msg_id && r.sender_id === o.sender_id));
       // Server rows first, so they win over local copies of the same message.
       const merged = [...rows, ...kept, ...pending];
@@ -150,7 +157,9 @@ export function Chat() {
     if (!oldest || loadingOlder) return;
     setLoadingOlder(true);
     const el = listRef.current;
-    const before = el ? el.scrollHeight - el.scrollTop : 0;
+    const first = el?.querySelector<HTMLElement>('[data-mid]');
+    restoreAnchor.current = el && first
+      ? { id: first.dataset.mid!, offset: first.getBoundingClientRect().top - el.getBoundingClientRect().top } : null;
     try {
       const { data, error: err } = await supabase.from('messages').select(COLS).eq('conversation_id', convId)
         .lt('created_at', oldest).order('created_at', { ascending: false }).limit(PAGE);
@@ -161,7 +170,6 @@ export function Chat() {
         const have = new Set((prev ?? []).map((m) => m.id));
         return [...older.filter((m) => !have.has(m.id)), ...(prev ?? [])];
       });
-      requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - before; });
     } catch (e) { showToast(errorMessage(e)); }
     finally { setLoadingOlder(false); }
   }, [convId, loadingOlder, showToast]);
@@ -205,6 +213,11 @@ export function Chat() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` }, (p) => {
         if (p.eventType === 'DELETE') return;
         const row = p.new as Message;
+        // Older than the loaded window while there is unloaded history: "Load earlier
+        // messages" will fetch it in order; adding it now would leave a gap.
+        const oldest = messagesRef.current?.find((m) => !m.local)?.created_at;
+        if (hasOlderRef.current && oldest && row.created_at < oldest) return;
+        liveAt.current.set(row.id, Date.now());
         upsert(row);
         if (p.eventType === 'INSERT' && row.kind === 'snap') void loadSnaps();
         if (p.eventType === 'INSERT' && row.sender_id !== me) {
@@ -252,11 +265,31 @@ export function Chat() {
     return () => clearInterval(t);
   }, [typing]);
 
-  // Keep scrolled to bottom when new messages arrive, unless the user scrolled up.
+  // Keep scrolled to bottom when new messages arrive, unless the user scrolled up. After
+  // "Load earlier messages", keep the reader's place (without relying on scroll anchoring).
   useLayoutEffect(() => {
     const el = listRef.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages, typing]);
+    if (!el) return;
+    const anchor = restoreAnchor.current;
+    if (anchor) {
+      // Put the previously first message back where it was (the button and a day separator
+      // above it may have gone, so measure the message itself).
+      const node = el.querySelector<HTMLElement>(`[data-mid="${anchor.id}"]`);
+      if (node) el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor.offset;
+      if (!loadingOlder) restoreAnchor.current = null;
+      return;
+    }
+    if (stick.current) el.scrollTop = el.scrollHeight;
+  }, [messages, typing, hasOlder, loadingOlder]);
+
+  // The list gets shorter when the keyboard opens (or the composer grows): stay at the bottom.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { if (stick.current) el.scrollTop = el.scrollHeight; });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   function onScroll() {
     const el = listRef.current;
@@ -387,7 +420,7 @@ export function Chat() {
             <div key={m.client_msg_id + m.sender_id} style={{ display: 'contents' }}>
               {daySep}
               <div className={`msg ${mine ? 'msg-me' : 'msg-them'}${m.local === 'sending' ? ' msg-pending' : ''}${m.local === 'failed' ? ' msg-failed' : ''}`}
-                   data-testid="message">
+                   data-testid="message" data-mid={m.id}>
                 {showAuthor && <span className="msg-author">{nameOf(m.sender_id)}{handleOf(m.sender_id) ? <span className="muted"> @{handleOf(m.sender_id)}</span> : null}</span>}
                 {quoted && <span className="msg-meta">↪ {quoted.deleted_at ? 'deleted message' : (quoted.body ?? '').slice(0, 60)}</span>}
                 {m.kind === 'snap' && !m.deleted_at ? snapBubble(m)

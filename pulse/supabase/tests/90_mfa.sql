@@ -1,6 +1,6 @@
 -- Two-step verification is enforced by the database once a factor is verified.
 do $$
-declare u uuid; f uuid; v uuid; c uuid; p text;
+declare u uuid; f uuid; v uuid; c uuid; p text; w uuid;
 begin
   u := test.new_user('mfa_90'); v := test.new_user('pal_90');
   perform test.befriend(u, v);
@@ -71,6 +71,18 @@ begin
                       'admin_mfa_reset_confirm');
   perform test.as_user(u, '{"aal":"aal2"}');
   perform test.ok((public.admin_usage_summary() ->> 'accounts') is not null, 'owner at aal2 can administer');
+  perform test.as_superuser();
+  update private.platform_config set owner_user_id = null;
+
+  -- The owner must have 2FA on: without a factor, an aal1 session has no owner powers (0024).
+  w := test.new_user('ownnofactor_90');
+  update private.platform_config set owner_user_id = w;
+  perform test.as_user(w, '{"aal":"aal1"}');
+  perform test.throws('select public.admin_usage_summary()', 'owner_mfa_required', 'owner without 2FA: no panel');
+  perform test.throws(format($q$select public.admin_set_account_state(%L, 'suspended', 'x')$q$, v), 'owner_mfa_required',
+                      'owner without 2FA: no moderation');
+  perform test.throws(format($q$select public.admin_mfa_reset_request(%L, 'x')$q$, v), 'owner_mfa_required',
+                      'owner without 2FA: no 2FA resets');
   perform test.as_superuser();
   update private.platform_config set owner_user_id = null;
 

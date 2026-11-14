@@ -23,7 +23,18 @@ test('long chats: earlier messages load on request', async ({ browser }) => {
   await b.reload();
   await expect(b.getByTestId('messages')).toContainText('old message 230');
   await expect(b.getByText('old message 1', { exact: true })).toHaveCount(0);   // only the newest 200 at first
+  // Late live events for those (seeded) rows must not slip older messages in out of order.
+  await b.waitForTimeout(2000);
+  await expect(b.getByText('old message 1', { exact: true })).toHaveCount(0);
+  // The reader keeps their place, even without the browser's scroll anchoring (Safari).
+  await b.addStyleTag({ content: '.messages { overflow-anchor: none; }' });
+  await b.getByTestId('messages').evaluate((el) => { el.scrollTop = 0; });
+  const anchor = b.getByText('old message 32', { exact: true });   // first on screen
+  const before = (await anchor.boundingBox())!.y;
   await b.getByRole('button', { name: 'Load earlier messages' }).click();
+  await expect(b.getByText('old message 1', { exact: true })).toBeAttached();
+  expect(Math.abs((await anchor.boundingBox())!.y - before)).toBeLessThan(6);
+  await b.getByText('old message 1', { exact: true }).scrollIntoViewIfNeeded();
   await expect(b.getByText('old message 1', { exact: true })).toBeVisible();
   await expect(b.getByRole('button', { name: 'Load earlier messages' })).toHaveCount(0);   // nothing older left
   await ca.close(); await cb.close();

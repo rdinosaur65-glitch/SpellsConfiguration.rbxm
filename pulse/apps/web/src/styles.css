@@ -42,11 +42,12 @@ button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no
 .btn-ghost { background: transparent; border-color: var(--border); }
 .btn-subtle { background: var(--surface-2); }
 .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
-.btn-sm { min-height: 34px; padding: 0 12px; font-size: 14px; }
-.icon-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; border: 0;
+.btn-sm { min-height: 44px; padding: 0 14px; font-size: 14px; }
+.icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 999px; border: 0;
   background: transparent; color: var(--text); cursor: pointer; }
 .icon-btn:hover { background: var(--surface-2); }
-.link-btn { background: none; border: 0; color: var(--accent-text); cursor: pointer; padding: 4px 0; font-weight: 600; }
+.link-btn { background: none; border: 0; color: var(--accent-text); cursor: pointer; padding: 4px 0; font-weight: 600;
+  min-height: 44px; display: inline-flex; align-items: center; }
 
 .field { display: grid; gap: 6px; }
 .field-label { font-size: 13px; font-weight: 600; color: var(--text-2); }
@@ -94,7 +95,7 @@ button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no
 .section-title { font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3);
   margin: 22px 4px 8px; }
 .stack { display: grid; gap: 14px; }
-.row { display: flex; align-items: center; gap: 12px; }
+.row { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .muted { color: var(--text-2); }
 .small { font-size: 13px; }
 .grow { flex: 1; min-width: 0; }
@@ -137,7 +138,8 @@ button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no
 .legal { font-size: 12px; color: var(--text-3); text-align: center; }
 
 /* ---------- lists ---------- */
-.list { display: grid; }
+.list { display: grid; grid-template-columns: minmax(0, 1fr); }
+.list-item > .grow, .row > .grow { min-width: 0; }
 .list-item { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-radius: var(--radius); color: inherit;
   text-decoration: none; background: none; border: 0; width: 100%; text-align: left; cursor: pointer; }
 .list-item:hover { background: var(--surface); text-decoration: none; }
@@ -150,7 +152,7 @@ button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no
 .label-snap.label-new { color: #ef4444; }
 .label-quiet .label-dot { border: 2px solid var(--text-3); }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: none; }
-.chip { flex: none; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
+.chip { flex: none; min-height: 44px; padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
   font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text-2); }
 .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
 .search { position: relative; }
@@ -184,7 +186,9 @@ button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no
 .msg-actions { display: flex; gap: 4px; }
 .sheet-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / .5); z-index: 60; display: grid; align-items: end; justify-items: center; }
 .sheet { width: 100%; max-width: 640px; background: var(--surface); border-radius: 22px 22px 0 0; padding: 12px 16px calc(16px + var(--safe-bottom));
-  display: grid; gap: 6px; animation: sheet .18s ease-out; }
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; animation: sheet .18s ease-out;
+  max-height: calc(var(--app-h, 100dvh) - var(--safe-top) - 16px); overflow-y: auto; overscroll-behavior: contain; }
+:root.vv-shifted .sheet-backdrop { top: var(--vv-top, 0px); bottom: auto; height: var(--app-h, 100dvh); }
 @keyframes sheet { from { transform: translateY(30px); opacity: 0; } }
 .sheet-item { min-height: 50px; border: 0; background: var(--surface-2); border-radius: var(--radius); font-weight: 600; cursor: pointer; }
 .sheet-item.danger { color: var(--danger); }
@@ -245,3 +249,4 @@ a.sheet-item { display: flex; align-items: center; justify-content: center; text
 .messages { overscroll-behavior: contain; }
 .install-card ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; }
 :root.vv-shifted .app { transform: translateY(var(--vv-top, 0px)); }   /* iOS keyboard: follow the visible area */
+:root.kb-open .composer { padding-bottom: 10px; }                         /* no home indicator above a keyboard */

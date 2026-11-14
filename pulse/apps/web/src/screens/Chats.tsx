@@ -142,7 +142,7 @@ function NewGroup({ onClose }: { onClose: () => void }) {
     catch (e) { setError(errorMessage(e)); setBusy(false); }
   }
   return (
-    <Sheet label="New group" onClose={onClose} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+    <Sheet label="New group" onClose={onClose}>
         <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>New group</h2>
         {error && <Banner>{error}</Banner>}
         <label className="field" htmlFor="group-name"><span className="field-label">Group name</span>

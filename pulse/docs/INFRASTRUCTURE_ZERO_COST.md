@@ -73,7 +73,7 @@ These numbers are the binding constraints. PULSE enforces them in code (see §5)
 | Resource | Free limit | PULSE budget | What that means in practice |
 |---|---|---|---|
 | File storage | 1 GB total (whole platform) | 400 MB ephemeral (Snaps, Stories, chat media) · 450 MB Memories backup · 50 MB profile assets · 100 MB safety headroom | Cloud backup is a **small** allowance, not 20 GB. Default per-user Memories backup quota: **50 MB**; a global pool guard stops new backups at 90% of 450 MB even if a user has quota left |
-| Egress | 5 GB/month | ~160 MB/day budget, tracked server-side when signed URLs are issued | ≈ 1,000 compressed photo views/day **or** ≈ 20 one-minute video views/day |
+| Egress | 5 GB/month | 70 MB/day media budget (25 MB a person), charged when media-url authorises a view; each view leaves Supabase about twice (Storage → function → phone) | ≈ 300–400 compressed photo views/day for the whole group |
 | Database | 500 MB | Text/metadata writes refused at 90% (`assert_db_headroom`, 0014); daily text quota of 2 MB per user; edits capped | Millions of text messages; fine for a friend network |
 | Realtime | 200 concurrent connections | — | ≈ 150 simultaneously online users |
 | Auth | 50,000 MAU | — | Not the binding constraint |
@@ -109,8 +109,10 @@ app tells users plainly when a limit is reached.
   before an upload is authorised (`media_assets` + `platform_usage`).
 - Global pool guards: uploads are refused when a pool reaches its ceiling; the app
   shows a "service limit reached" state instead of failing silently.
-- Daily egress budget: signed-URL issuance records bytes; when the daily budget is
-  spent, new media views are deferred until the next UTC day (text keeps working).
+- Daily egress budget: every media-url authorisation records the bytes; when the daily
+  budget is spent, new media views are deferred until the next UTC day (text keeps
+  working). The budget is set below the monthly quota divided by 30 and halved, because
+  streaming through the function counts twice.
 - Request rate limits per user per action (`rate_limit_hit`), in the database so they
   apply to every client.
 - Registration cap.

@@ -5,9 +5,14 @@
 - **Postgres (Supabase)**: the authority. RLS on every table; all state changes via
   `SECURITY DEFINER` RPCs with `search_path = ''`, which re-check `auth.uid()`,
   account state, friendship, blocks, membership and quotas inside one transaction.
-- **Edge Functions**: hold the service-role key; used only for media URL signing,
-  storage deletion and push delivery. Each calls an authorisation RPC *with the
-  caller's JWT* before using service-role powers.
+- **Edge Functions** (three; they hold the service-role key):
+  - `media-url` calls an authorisation RPC *with the viewer's JWT*, then streams exactly
+    one copy of the photo or Snap (no URLs are handed out).
+  - `owner-mfa-reset` calls the owner RPCs with the owner's JWT and uses the service role
+    only for the steps the database reserves to it (issuing and carrying out a reset).
+  - `storage-janitor` is called only by the database's pg_cron job, authenticated by a
+    shared secret kept in Vault and in the function's secrets (`JANITOR_SECRET`).
+  There is no push-notification function yet.
 
 ## Two-step verification (migration 0013)
 Once a user has a *verified* TOTP factor, the database requires an `aal2` session
@@ -61,6 +66,10 @@ immediately, not when its JWT expires. Its own state is readable only through
   saves, or read receipts; a sender sees who read their own messages.
 - Registration cap (deleting accounts excluded), storage pools, per-user pool shares and a
   per-user share of the daily egress budget protect the free tier.
+- Sign-up is open to anyone who has the app's address; nothing in the app checks
+  invitations. For a friends-only beta the owner sets `registration_cap` to the number of
+  people invited and turns off "Allow new users to sign up" in Supabase once they have
+  joined (LAUNCH_GUIDE §9). Unconfirmed sign-ups hold a slot for up to 6 hours.
 
 ## Media
 - Single private bucket; uploads only into paths reserved by `authorize_upload()`. The
@@ -77,15 +86,18 @@ immediately, not when its JWT expires. Its own state is readable only through
 - Deduplicated media shared by several messages is deleted only when nothing references it;
   uploads never attached (and replaced avatars) are reclaimed after a day. Deleted media
   keeps counting against the user's share and the pool until the janitor has removed it.
-  Snap media additionally requires a live viewing session and the URL lifetime is
-  capped to the session's remaining time.
+  Snap media additionally requires a live viewing session; the authorisation and the
+  "view used" are recorded under one row lock, so a close racing a download can neither
+  refund a view that was shown nor serve bytes for a view that was refunded (0024).
 - Honest limitation: once bytes reach a device they can be captured (screenshots,
   screen recording, devtools). Saving permission is an in-app rule only.
 
 ## Owner
 - Identified by UUID in `private.platform_config`, never by username.
+- Owner powers need a two-step-verified session (aal2): the owner must turn on 2FA before
+  the Owner panel works (0024), so a stolen owner password alone opens nothing.
 - Owner RPCs: user search (minimal fields), reports with evidence snapshots, account
-  state, aggregate usage, audit log. No owner bypass exists in chat, Snap, Memories,
+  state, account deletion, aggregate usage, audit log, 2FA reset (below). No owner bypass exists in chat, Snap, Memories,
   Vault or location policies. Every privileged action writes `private.audit_log`,
   which is append-only by trigger.
 - Resetting another user's two-step verification (lost phone) is a two-factor action for the

@@ -83,6 +83,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return;
       setSession(data.session);
+      // Open at once from the last copy (offline launches would otherwise wait for the
+      // network calls and their retries), then refresh it in the background.
+      const cached = data.session ? readCache(data.session.user.id) : null;
+      if (cached) { setProfile(cached.profile); setSettings(cached.settings); setLoading(false); }
       await load(data.session);
       if (alive) setLoading(false);
     });

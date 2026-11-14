@@ -202,7 +202,7 @@ function AddMembers({ convId, existing, onClose, onAdded }:
     catch (e) { setError(errorMessage(e)); setBusy(false); }
   }
   return (
-    <Sheet label="Add friends" onClose={onClose} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+    <Sheet label="Add friends" onClose={onClose}>
       <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>Add friends</h2>
       {error && <Banner>{error}</Banner>}
       {friends === null ? <Spinner /> : friends.length === 0 ? <p className="muted small">All your friends are already here.</p> :

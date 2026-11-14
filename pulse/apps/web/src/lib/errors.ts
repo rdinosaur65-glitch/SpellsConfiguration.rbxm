@@ -14,6 +14,7 @@ const MESSAGES: Record<string, string> = {
   not_authenticated: 'Please sign in again.',
   reauthentication_required: 'For your safety, sign in again before doing this.',
   mfa_required: 'Enter your two-step verification code to continue.',
+  owner_mfa_required: 'Turn on two-step verification (Settings → Security) to use the owner panel.',
   owner_account_protected: 'The owner account cannot be deleted from the app.',
   // social
   query_too_short: 'Type at least 3 characters.',

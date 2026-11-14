@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
-import { emailText, PASSWORD, signUp, uniq } from './helpers';
+import { emailText, enableTotp, freshTotp, PASSWORD, signUp, uniq } from './helpers';
 
 const DB_URL = process.env.DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const sql = (q: string) => execFileSync('psql', [DB_URL, '-Atqc', q], { encoding: 'utf8' }).trim();
@@ -14,6 +14,13 @@ test('owner panel: a report leads to a suspension, which takes effect at once an
   const uo = uniq('own_'), uu = uniq('trl_'), ur = uniq('rep_');
   await signUp(o, uo, 'Owner'); await signUp(u, uu, 'Troll'); await signUp(r, ur, 'Reporter');
   sql(`update private.platform_config set owner_user_id = (select id from public.profiles where username = '${uo}')`);
+
+  // Owner powers need the owner's own 2FA.
+  await o.reload();
+  await nav(o, 'Settings').click();
+  await o.getByRole('link', { name: 'Owner panel' }).click();
+  await expect(o.getByText('Turn on two-step verification (Settings → Security) to use the owner panel.')).toBeVisible();
+  await enableTotp(o);
 
   // A stranger reports the troll from search results.
   await nav(r, 'Friends').click();
@@ -57,6 +64,7 @@ test('owner panel: a report leads to a suspension, which takes effect at once an
 });
 
 test('owner panel: resetting someone\'s 2FA needs a code emailed to the owner', async ({ browser }) => {
+  test.setTimeout(120_000);
   const [co, ct] = await Promise.all([browser.newContext(), browser.newContext()]);
   const o = await co.newPage(), t = await ct.newPage();
   const uo = uniq('own_'), ut = uniq('lost_');
@@ -64,6 +72,7 @@ test('owner panel: resetting someone\'s 2FA needs a code emailed to the owner', 
   const targetEmail = await signUp(t, ut, 'Lost Phone');
   sql(`update private.platform_config set owner_user_id = (select id from public.profiles where username = '${uo}')`);
   const targetId = sql(`select id from public.profiles where username = '${ut}'`);
+  const { secret, step } = await enableTotp(o);
   sql(`insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
        values (gen_random_uuid(), '${targetId}', 'phone', 'totp', 'verified', now(), now())`);
 
@@ -81,6 +90,9 @@ test('owner panel: resetting someone\'s 2FA needs a code emailed to the owner', 
   await expect(sheet.getByRole('alert')).toBeVisible();
   const started = Date.now() - 1000;
   await sheet.getByLabel('Your password').fill(PASSWORD);
+  await sheet.getByRole('button', { name: 'Continue' }).click();
+  // …then the owner's own second factor.
+  await sheet.getByLabel('Code from your authenticator app').fill(await freshTotp(o, secret, step));
   await sheet.getByRole('button', { name: 'Continue' }).click();
   await expect(sheet.getByText('We emailed a 6-digit code to your owner email address')).toBeVisible();
 

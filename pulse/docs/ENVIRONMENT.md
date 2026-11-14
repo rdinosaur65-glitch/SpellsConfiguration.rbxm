@@ -9,18 +9,20 @@ Nothing here costs money. Every value comes from a free account the **owner** cr
 |---|---|---|---|
 | `VITE_SUPABASE_URL` | Yes | Supabase → Project Settings → API | e.g. `https://abcd.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Yes | Same page, "anon / publishable" key | Safe to expose: RLS protects data |
-| `VITE_VAPID_PUBLIC_KEY` | For push | Generated locally (`npx web-push generate-vapid-keys`) | Public half only |
-| `VITE_TURN_CREDENTIALS_URL` | Optional | Open Relay dashboard (free, 20 GB/month) | Leave empty → STUN-only calls |
-| `VITE_STUN_URLS` | No | Default `stun:stun.l.google.com:19302` | Comma-separated |
+| `VITE_TURNSTILE_SITE_KEY` | Recommended | Cloudflare Turnstile widget (free) | Turn on together with captcha in Supabase Auth |
+| `VITE_OWNER_CONTACT` | Recommended | You | How friends reach you (shown on the privacy page), e.g. an email address |
+| `VITE_VAPID_PUBLIC_KEY` | Future (push) | Generated locally (`npx web-push generate-vapid-keys`) | Not used by this beta |
+| `VITE_TURN_CREDENTIALS_URL` | Future (calls) | Open Relay dashboard (free, 20 GB/month) | Not used by this beta |
+| `VITE_STUN_URLS` | Future (calls) | Default `stun:stun.l.google.com:19302` | Not used by this beta |
 
 ## Edge Functions (Supabase → Edge Functions → Secrets) — never in the browser
 
 | Variable | Required | Notes |
 |---|---|---|
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Auto-provided by Supabase | Service role used only by `storage-janitor` and `media-url` signing |
-| `VAPID_PRIVATE_KEY` | For push | Private half of the VAPID pair |
-| `VAPID_SUBJECT` | For push | `mailto:` address of the owner |
-| `TURN_API_KEY` | Optional | Open Relay API key; used to mint short-lived TURN credentials |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Auto-provided by Supabase | Service role used by `media-url` (streaming after an authorisation RPC), `storage-janitor` and `owner-mfa-reset` |
+| `VAPID_PRIVATE_KEY` | Future (push) | Private half of the VAPID pair — not used by this beta |
+| `VAPID_SUBJECT` | Future (push) | `mailto:` address — not used by this beta |
+| `TURN_API_KEY` | Future (calls) | Open Relay API key — not used by this beta |
 | `JANITOR_SECRET` | Yes | Shared secret between the pg_cron job (Vault) and `storage-janitor` |
 | `PULSE_SMTP_HOST`, `PULSE_SMTP_PORT`, `PULSE_SMTP_TLS` | For owner 2FA resets | `smtp.gmail.com`, `465`, `implicit` (ports 25/587 are blocked for Edge Functions) |
 | `PULSE_SMTP_USER`, `PULSE_SMTP_PASS` | For owner 2FA resets | A PULSE mailbox and its app password — never the owner's own address |
@@ -33,7 +35,8 @@ Nothing here costs money. Every value comes from a free account the **owner** cr
 update private.platform_config set owner_user_id = '<owner-uuid>';
 -- Optional tuning (defaults shown):
 update private.platform_config set registration_cap = 50,
-  memories_quota_bytes = 52428800, daily_egress_budget_bytes = 167772160;
+  memories_quota_bytes = 52428800, daily_egress_budget_bytes = 73400320,
+  daily_egress_user_bytes = 26214400;
 ```
 
 ## Supabase Auth settings (dashboard) — mirror `supabase/config.toml`

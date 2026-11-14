@@ -8,7 +8,8 @@ import type { Message } from './types';
  * person's unsent message can never go out under someone else's name. Sends are
  * idempotent (client_msg_id; photos are deduplicated by SHA-256), so retries are safe.
  * The Shell flushes the queue on reconnect from any screen; an open chat listens for
- * the results.
+ * the results. Each chat's messages are sent one at a time, in the order they were
+ * written, and never overtake an earlier message that is still waiting.
  */
 export interface Pending extends Message { local?: 'sending' | 'failed'; preview?: string }
 export type OutboxEvent =
@@ -24,7 +25,7 @@ const listeners = new Set<(e: OutboxEvent) => void>();
 export function setOutboxOwner(uid: string | null): void {
   if (uid === owner) return;
   for (const m of queue.values()) if (m.preview) URL.revokeObjectURL(m.preview);
-  queue.clear(); blobs.clear(); inflight.clear();
+  queue.clear(); blobs.clear(); inflight.clear(); chains.clear(); scheduled.clear();
   owner = uid;
 }
 
@@ -47,11 +48,47 @@ export function enqueue(m: Pending, blob?: Blob): void {
 
 const isOffline = (e: unknown) => navigator.onLine === false || /fetch|network/i.test((e as Error)?.message ?? '');
 
-/** Try to send one queued message. Keeps it queued when offline; drops it on other errors. */
-export async function deliver(clientId: string): Promise<void> {
+/** Per-chat send chain: one message at a time, in queue order. */
+const chains = new Map<string, Promise<void>>();
+const scheduled = new Set<string>();
+
+function schedule(conv: string, clientId: string): Promise<void> {
+  scheduled.add(clientId);
+  const next = (chains.get(conv) ?? Promise.resolve()).then(() => send(clientId))
+    .finally(() => { scheduled.delete(clientId); });
+  chains.set(conv, next);
+  void next.finally(() => { if (chains.get(conv) === next) chains.delete(conv); });
+  return next;
+}
+
+/** (Re)try every queued message of one chat, oldest first. */
+function kick(conv: string): Promise<void> {
+  const mine = [...queue.values()].filter((x) => x.conversation_id === conv && x.sender_id === owner);
+  for (const x of mine) if (x.local === 'failed' && !scheduled.has(x.client_msg_id)) queue.set(x.client_msg_id, { ...x, local: 'sending' });
+  let last = chains.get(conv) ?? Promise.resolve();
+  for (const x of mine) if (!scheduled.has(x.client_msg_id) && !inflight.has(x.client_msg_id)) last = schedule(conv, x.client_msg_id);
+  return last;
+}
+
+/** Send a queued message — together with any earlier one of its chat that is still
+ *  waiting, in order. Keeps messages queued when offline; drops one on other errors. */
+export function deliver(clientId: string): Promise<void> {
+  const m = queue.get(clientId);
+  if (!m || m.sender_id !== owner) return Promise.resolve();
+  return kick(m.conversation_id);
+}
+
+async function send(clientId: string): Promise<void> {
   const m = queue.get(clientId);
   if (!m || inflight.has(clientId) || m.sender_id !== owner) return;
   const sender = owner;
+  // An earlier message of this chat is still waiting (offline): keep the order, wait too.
+  const mine = [...queue.values()].filter((x) => x.conversation_id === m.conversation_id && x.sender_id === sender);
+  if (mine.slice(0, mine.findIndex((x) => x.client_msg_id === clientId)).some((x) => x.local === 'failed')) {
+    queue.set(clientId, { ...m, local: 'failed' });
+    emit({ type: 'failed', clientId, offline: true, error: new Error('network: waiting for an earlier message') });
+    return;
+  }
   inflight.add(clientId);
   queue.set(clientId, { ...m, local: 'sending' });
   try {
@@ -78,7 +115,7 @@ export async function deliver(clientId: string): Promise<void> {
 
 /** Send everything still queued for the current account (called on reconnect). */
 export function flushOutbox(): void {
-  for (const m of queue.values()) if (m.local === 'failed' && m.sender_id === owner) void deliver(m.client_msg_id);
+  for (const conv of new Set([...queue.values()].filter((m) => m.sender_id === owner).map((m) => m.conversation_id))) void kick(conv);
 }
 
 /** Retry from the chat's "Retry" button (re-queues a message that failed for another reason). */

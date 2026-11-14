@@ -7,6 +7,8 @@
 #  4. Two group members read at the same moment -> the disappearing message still starts
 #     expiring (neither reader may miss the other's read).
 #  5. A read races a member leaving -> the same guarantee.
+#  6. A Snap view authorisation races its close -> never served AND refunded.
+#  7. A member removal races their read -> no deadlock, the removal happens.
 set -uo pipefail
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -123,3 +125,61 @@ wait $P1 $P2
 expiring=$("${PSQL[@]}" "${DB[@]}" -At -c "select expires_at is not null from public.messages where id = '$G5MSG'")
 echo "  read vs leave race: expiry started=$expiring"
 [ "$expiring" = "t" ] || { cat $TMP/race5a $TMP/race5b; exit 1; }
+
+# --- 6. a Snap view authorisation races its close: never bytes served AND the view refunded
+for round in 1 2; do
+  s6=$("${PSQL[@]}" "${DB[@]}" -At -f "$ROOT/supabase/tests/helpers.sql" -f - 2>&1 <<SQL | grep -E '^S6|ERROR' | tail -1
+create temp table s6 as select test.upload('$SENDER', 'snap', 'image/jpeg', 1000) asset;
+alter table s6 add column snap uuid, add column sess uuid;
+grant all on s6 to authenticated;
+select test.as_user('$SENDER');
+update s6 set snap = public.send_snap(asset, array['$RECIP'::uuid], null, 3::smallint, false, gen_random_uuid());
+select test.as_user('$RECIP');
+update s6 set sess = (select session_id from public.open_snap(snap));
+select 'S6 ' || snap || ' ' || sess from s6;
+SQL
+)
+  s6="${s6#S6 }"; read -r S6SNAP S6SESS <<< "$s6"
+  if [ -z "${S6SESS:-}" ]; then echo "race 6 setup failed: $s6"; exit 1; fi
+  close_sql="begin; select 'CLOSED ' || public.close_snap_view('$S6SNAP', '$S6SESS'); select pg_sleep(1.2); commit;"
+  grant_sql="begin; select 'GRANT' from public.authorize_snap_media('$S6SNAP', '$S6SESS'); select pg_sleep(1.2); commit;"
+  if [ "$round" = 1 ]; then first="$close_sql"; second="$grant_sql"; else first="$grant_sql"; second="$close_sql"; fi
+  "${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$RECIP")" -c "$first" > $TMP/race6a 2>&1 & P1=$!
+  sleep 0.3
+  "${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$RECIP")" -c "$second" > $TMP/race6b 2>&1 & P2=$!
+  wait $P1 $P2
+  granted=$(cat $TMP/race6a $TMP/race6b | grep -c '^GRANT')
+  views=$("${PSQL[@]}" "${DB[@]}" -At -c "select views_used || ' ' || status from public.snap_recipients where snap_id = '$S6SNAP'")
+  echo "  snap close vs authorise (round $round): granted=$granted views/status=$views"
+  if [ "$granted" = "1" ] && [ "${views%% *}" != "1" ]; then cat $TMP/race6a $TMP/race6b; exit 1; fi
+  if [ "$granted" = "0" ] && [ "${views%% *}" != "0" ]; then cat $TMP/race6a $TMP/race6b; exit 1; fi
+done
+
+# --- 7. removing a member while they mark the chat read must not deadlock
+g7=$("${PSQL[@]}" "${DB[@]}" -At -f "$ROOT/supabase/tests/helpers.sql" -f - 2>&1 <<SQL | grep -E '^G7|ERROR' | tail -1
+create temp table g7 as select test.new_user('race_e_' || floor(random()*1e6)::int) e;
+select test.befriend('$SENDER', e) from g7;
+alter table g7 add column conv uuid, add column msg uuid;
+grant all on g7 to authenticated;
+select test.as_user('$SENDER');
+update g7 set conv = public.create_group('race7', array['$RECIP'::uuid, e]);
+update g7 set msg = public.send_message(conv, 'text', 'saved by e', gen_random_uuid());
+select test.as_user(e) from g7;
+select public.set_message_saved(msg, true) from g7;
+select 'G7 ' || conv || ' ' || msg || ' ' || e from g7;
+SQL
+)
+g7="${g7#G7 }"
+read -r G7CONV G7MSG G7E <<< "$g7"
+if [ -z "${G7E:-}" ]; then echo "race 7 setup failed: $g7"; exit 1; fi
+# Hold e's saved row so the removal pauses inside detach_member, then let e read.
+"${PSQL[@]}" "${DB[@]}" -At -c "begin; select 1 from public.saved_messages where user_id = '$G7E' for update; select pg_sleep(2); rollback;" > /dev/null 2>&1 & P0=$!
+sleep 0.3
+"${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$SENDER")" -c "select 'REMOVED ' || public.remove_group_member('$G7CONV', '$G7E');" > $TMP/race7a 2>&1 & P1=$!
+sleep 0.5
+"${PSQL[@]}" "${DB[@]}" -At -c "$(as_user "$G7E")" -c "select 'READ ' || public.mark_conversation_read('$G7CONV');" > $TMP/race7b 2>&1 & P2=$!
+wait $P0 $P1 $P2
+left=$("${PSQL[@]}" "${DB[@]}" -At -c "select left_at is not null from public.conversation_members where conversation_id = '$G7CONV' and user_id = '$G7E'")
+deadlocks=$(cat $TMP/race7a $TMP/race7b | grep -c 'deadlock')
+echo "  remove vs read race: removed=$left deadlocks=$deadlocks"
+[ "$left" = "t" ] && [ "$deadlocks" = "0" ] || { cat $TMP/race7a $TMP/race7b; exit 1; }

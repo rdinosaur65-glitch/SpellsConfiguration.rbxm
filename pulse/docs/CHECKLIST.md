@@ -19,7 +19,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Privacy notice and house rules page | ✅ | `/privacy`, linked from sign-up and Settings (owner should review) |
 | Bot protection (Turnstile) | 🟡 | Widget on sign-up/sign-in/reset/resend/re-auth when `VITE_TURNSTILE_SITE_KEY` is set; not exercised against Cloudflare here |
 | Security model | ✅ | `SECURITY_MODEL.md` |
-| Migrations (15) apply cleanly | ✅ | shim + real local Supabase |
+| Migrations (24) apply cleanly | ✅ | shim + real local Supabase (CI runs both) |
 | RLS on every table, function lockdown | ✅ | tests 10, 60, 80 (catalog checks incl. 2FA + account-state gates, definer RPCs check the caller, indexed FKs) |
 | API contract: no STABLE function writes (PostgREST read-only) | ✅ | test 80 now also flags STABLE→VOLATILE calls (caught conversation_gallery, fixed in 0015) |
 | Rate limiting | ✅ | Every data-creating or cheaply repeatable RPC (others bounded by those); tests 50, 75, 76 |
@@ -62,6 +62,11 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Requests: send/accept/decline/cancel, mutual auto-accept, live updates | ✅ | UI + e2e |
 | Remove friend, block (also from requests/search), unblock list, report user | ✅ | UI; block in e2e; blocks with an existing chat tested (75) |
 | Blocked chat stays for the blocker with an × that erases it for both (messages, Snaps, media) | ✅ | 0022, test 76, e2e social |
+| Owner panel requires the owner's own 2FA (aal2) | ✅ | 0024, tests 90, functions.test.mjs, e2e owner |
+| Final review fixes: Snap view race, member-removal deadlock, egress budget for double metering | ✅ | 0024, concurrency.sh races 6–7, test 75 |
+| Small phones: long names, tall sheets, 44 px touch targets, keyboard keeps newest message, pinch-zoom | ✅ | e2e mobile.spec.ts (iPhone SE, Pixel 7, 375×548) |
+| Offline messages keep their order; refresh drops disappeared messages; "Load earlier" keeps place without scroll anchoring | ✅ | e2e mobile.spec.ts, history.spec.ts |
+| Installed app opens offline at once (cached profile, refreshed in background) | ✅ | e2e security (shell within 3 s) |
 | Private nicknames + colours | ✅ | UI |
 | Direct & group conversations | ✅ | DB tested; direct chats and the new-group sheet in e2e |
 | Group admin UI (roles, add/remove, transfer, leave, rename, report, shared photos) | ✅ | e2e (create → roles → remove → rename → transfer → leave) |

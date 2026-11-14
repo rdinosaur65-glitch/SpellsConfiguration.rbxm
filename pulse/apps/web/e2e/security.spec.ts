@@ -64,8 +64,9 @@ test('installed app opens offline from the service worker', async ({ page, conte
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15_000 });
   await context.setOffline(true);
   await page.reload();
+  // Opens straight away from the local copy (no waiting for network retries).
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({ timeout: 3000 });
   await expect(page.getByText(/^Offline · messages send when you reconnect/)).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   await expect(page.getByTestId('my-username')).toBeVisible();     // from the local profile copy
   await page.getByRole('link', { name: /^Chats/ }).click();
   await expect(page.getByRole('alert')).toContainText('offline');

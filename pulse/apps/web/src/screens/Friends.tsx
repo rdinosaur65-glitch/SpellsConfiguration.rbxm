@@ -182,7 +182,7 @@ export function Friends() {
                           onClick={() => openChat(f.user_id)}>
                     <Avatar name={name} online={f.online} />
                     <span className="grow">
-                      <span className="list-title truncate" style={{ display: 'block', color: f.nickname_color ?? undefined }}>{name}<StreakBadge streak={streaks.get(f.user_id)} /></span>
+                      <span className="list-title title-row" style={{ color: f.nickname_color ?? undefined }}><span className="truncate">{name}</span><StreakBadge streak={streaks.get(f.user_id)} /></span>
                       <span className="list-sub">@{f.username}{f.online ? ' · Online' : f.last_active_at ? ` · ${relativeTime(f.last_active_at)}` : ''}</span>
                     </span>
                   </button>

@@ -563,7 +563,7 @@ export function Chat() {
   return (
     <div className="screen screen-full">
       <div style={{ padding: '0 16px' }}>
-        <Header title={<><span data-testid="chat-title">{title}</span><StreakBadge streak={streak} onClick={() => setStreakOpen(true)} /></>}
+        <Header title={<span className="title-row" style={{ justifyContent: 'center' }}><span className="truncate" data-testid="chat-title">{title}</span><StreakBadge streak={streak} onClick={() => setStreakOpen(true)} /></span>}
           left={<Link to="/chats" className="icon-btn" aria-label="Back to chats"><Icon name="back" /></Link>}
           right={<button className="icon-btn" aria-label="Chat settings" onClick={() => setShowExpiry(true)}><Icon name="more" /></button>} />
       </div>
@@ -605,7 +605,7 @@ export function Chat() {
               <div className={`msg ${mine ? 'msg-me' : 'msg-them'}${m.local === 'sending' ? ' msg-pending' : ''}${m.local === 'failed' ? ' msg-failed' : ''}${highlight === m.id ? ' msg-highlight' : ''}`}
                    data-testid="message" data-mid={m.id}>
                 {showAuthor && <span className="msg-author">{nameOf(m.sender_id)}{handleOf(m.sender_id) ? <span className="muted"> @{handleOf(m.sender_id)}</span> : null}</span>}
-                {quoted && <span className="msg-meta">↪ {quoted.deleted_at ? 'deleted message' : (quoted.body ?? '').slice(0, 60)}</span>}
+                {quoted && <span className="reply-quote">↪ {quoted.deleted_at ? 'Deleted message' : quoted.body ?? (quoted.kind === 'photo' ? '📷 Photo' : quoted.kind === 'voice' ? '🎤 Voice note' : 'Message')}</span>}
                 {m.kind === 'snap' && !m.deleted_at ? snapBubble(m)
                   : m.kind === 'voice' && !m.deleted_at ? (
                   <div className="bubble bubble-media bubble-voice">

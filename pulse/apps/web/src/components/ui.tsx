@@ -45,7 +45,7 @@ export function Avatar({ name, color, size = 44, online }: { name: string; color
   let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return (
     <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.38,
-      background: color ?? `hsl(${h} 55% 45%)` }} aria-hidden="true">
+      background: color ?? `hsl(${h} 40% 30%)` }} aria-hidden="true">
       {initials}
       {online && <span className="avatar-online" />}
     </span>

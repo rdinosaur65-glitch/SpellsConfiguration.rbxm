@@ -62,7 +62,7 @@ export function Settings() {
         <Seg label="Font" value={settings.appearance.font} onChange={(font) => setAppearance({ font })}
              options={[['system', 'Default'], ['rounded', 'Rounded'], ['serif', 'Serif'], ['mono', 'Mono']]} />
         <Seg label="Chat bubbles" value={settings.appearance.bubbles} onChange={(bubbles) => setAppearance({ bubbles })}
-             options={[['rounded', 'Rounded bubbles'], ['square', 'Square bubbles']]} />
+             options={[['rounded', 'Rounded'], ['square', 'Square']]} />
         <Toggle label="Reduce motion" checked={settings.appearance.reduce_motion} onChange={(v) => setAppearance({ reduce_motion: v })} />
         <p className="muted small" style={{ padding: '0 16px 14px', margin: 0 }}>Synced to every device you sign in on.</p>
       </Section>

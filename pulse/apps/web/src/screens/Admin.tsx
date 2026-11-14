@@ -101,7 +101,8 @@ export function Admin() {
   }
 
   if (!isOwner) {
-    return <div className="screen"><Header title="Owner panel" /><Banner>Only the owner can open this page.</Banner></div>;
+    return <div className="screen"><Header title="Owner panel" left={<Link to="/settings" className="icon-btn" aria-label="Back to settings"><Icon name="back" /></Link>} />
+      <Banner>Only the owner can open this page.</Banner></div>;
   }
 
   return (
@@ -179,7 +180,7 @@ export function Admin() {
       {users === null ? <Spinner small /> : (
         <div className="list">
           {users.map((u) => (
-            <div key={u.id} className="list-item" data-testid="admin-user-row">
+            <div key={u.id} className="list-item admin-row" data-testid="admin-user-row">
               <span className="grow">
                 <span className="list-title truncate" style={{ display: 'block' }}>{u.display_name} <span className="muted small">@{u.username}</span></span>
                 <span className="list-sub">{u.account_state}{u.open_reports ? ` · ${u.open_reports} open report${u.open_reports > 1 ? 's' : ''}` : ''} · joined {relativeTime(u.created_at)}</span>
@@ -206,7 +207,7 @@ export function Admin() {
       <Card title="App errors (last 14 days)">
         {errors.length === 0 ? <span className="muted small">No errors reported.</span> : errors.map((e) => (
           <details key={e.id} className="small" data-testid="error-row" style={{ marginBottom: 6 }}>
-            <summary><strong>{e.message}</strong> · {relativeTime(e.created_at)}{e.username ? ` · @${e.username}` : ''}</summary>
+            <summary style={{ overflowWrap: 'anywhere' }}><strong>{e.message}</strong> · {relativeTime(e.created_at)}{e.username ? ` · @${e.username}` : ''}</summary>
             <div className="muted" style={{ overflowWrap: 'anywhere' }}>{e.path} · {e.app_version} · {e.user_agent}</div>
             {e.stack && <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, margin: '4px 0 0' }}>{e.stack}</pre>}
           </details>

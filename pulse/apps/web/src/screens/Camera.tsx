@@ -232,8 +232,8 @@ export function Camera() {
         )}
         {(shot || clip) && (
           <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
-            {shot && <a className="btn btn-ghost" href={shot} download={`pulse-${Date.now()}.jpg`}>Save to device</a>}
-            {clip && <a className="btn btn-ghost" href={clip.url} download={`pulse-${Date.now()}.${clip.blob.type.includes('mp4') ? 'mp4' : 'webm'}`}>Save to device</a>}
+            {shot && <a className="btn btn-ghost cam-save" href={shot} download={`pulse-${Date.now()}.jpg`}>Save to device</a>}
+            {clip && <a className="btn btn-ghost cam-save" href={clip.url} download={`pulse-${Date.now()}.${clip.blob.type.includes('mp4') ? 'mp4' : 'webm'}`}>Save to device</a>}
             <Button onClick={() => setSending(true)}>Send to…</Button>
           </div>
         )}

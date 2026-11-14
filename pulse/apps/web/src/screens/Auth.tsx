@@ -134,7 +134,10 @@ export function SignUp() {
   const inviteOnly = reg?.mode !== 'public';
   const inviteComplete = invite.replace(/-/g, '').length === 12;
   const inviteOk = reg?.invite === 'pending';
-  const inviteError = inviteComplete && !checking && reg?.invite && reg.invite !== 'pending' ? INVITE_PROBLEM[reg.invite] : null;
+  const fromLink = Boolean(params.get('invite'));
+  const inviteError = inviteComplete && !checking && reg?.invite && reg.invite !== 'pending' ? INVITE_PROBLEM[reg.invite]
+    : fromLink && invite && !inviteComplete ? 'This invitation link looks incomplete: a code has 12 letters and numbers (XXXX-XXXX-XXXX). Check the link, or type the code.'
+    : null;
   const closed = reg?.mode === 'public' && reg.public_full && !inviteOk;
   const canSubmit = email.includes('@') && u.ok && validPassword(password) && (inviteOnly ? inviteOk : !closed) && !checking;
 

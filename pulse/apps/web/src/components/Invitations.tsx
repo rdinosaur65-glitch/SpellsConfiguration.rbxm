@@ -108,9 +108,9 @@ export function InvitationsCard({ onToast, onChange }: { onToast: (m: string) =>
       {list === null ? <Spinner small /> : shown.length === 0 ? <p className="muted small">No {filter === 'all' ? '' : LABEL[filter].toLowerCase() + ' '}invitations.</p> : (
         <div className="list" data-testid="invitation-list">
           {shown.map((i) => (
-            <div key={i.id} className="list-item" data-testid="invitation-row" data-status={i.status}>
+            <div key={i.id} className="list-item admin-row" data-testid="invitation-row" data-status={i.status}>
               <span className="grow" style={{ minWidth: 0 }}>
-                <span className="list-title truncate" style={{ display: 'block' }}>
+                <span className="list-title" style={{ display: 'block', overflowWrap: 'anywhere' }}>
                   {i.code ? <code>{showCode(i.code)}</code> : <span className="muted">{LABEL[i.status]}</span>}
                   {i.note ? ` · ${i.note}` : ''}
                 </span>

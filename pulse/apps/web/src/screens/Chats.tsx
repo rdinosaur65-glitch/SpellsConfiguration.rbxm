@@ -97,8 +97,8 @@ export function Chats() {
                   <Link to={`/chats/${c.conversation_id}`} className="list-item grow" aria-label={`${title}: ${c.label}`}>
                     <Avatar name={title} />
                     <span className="grow">
-                      <span className="list-title truncate" style={{ display: 'block', color: c.title_color ?? undefined }}>
-                        {c.pinned_rank ? '📌 ' : ''}{title}{c.muted ? ' 🔕' : ''}
+                      <span className="list-title title-row" style={{ color: c.title_color ?? undefined }}>
+                        <span className="truncate">{c.pinned_rank ? '📌 ' : ''}{title}{c.muted ? ' 🔕' : ''}</span>
                         {c.kind === 'direct' && c.other_user_id && <StreakBadge streak={streaks.get(c.other_user_id)} />}
                       </span>
                       <span className={labelClass(c)}>

@@ -31,10 +31,14 @@ begin
   perform test.ok((select online from public.list_friends() where user_id = d) is not null, 'presence visible');
   perform test.as_user(d);
   update public.user_settings set ghost_mode = true where user_id = d;
-  perform test.ok((select nickname from public.list_friends() where user_id = c) is null, 'nicknames private');
+  -- Each check requires the row to exist, so a missing row cannot pass as "hidden".
+  perform test.ok((select count(*) = 1 and bool_and(nickname is null) from public.list_friends() where user_id = c),
+                  'nicknames private');
   perform test.as_user(c);
-  perform test.ok((select online from public.list_friends() where user_id = d) is null, 'ghost mode hides online');
-  perform test.ok((select last_active_at from public.list_friends() where user_id = d) is null, 'ghost mode hides last active');
+  perform test.ok((select count(*) = 1 and bool_and(online is null) from public.list_friends() where user_id = d),
+                  'ghost mode hides online');
+  perform test.ok((select count(*) = 1 and bool_and(last_active_at is null) from public.list_friends() where user_id = d),
+                  'ghost mode hides last active');
   perform test.as_user(a);
   perform test.ok((select count(*) from public.list_friends()) = 0, 'non-friends listed nowhere');
 
@@ -46,7 +50,7 @@ begin
   -- Purge: only stale + unconfirmed accounts go; the username becomes free again.
   perform test.as_superuser();
   stale := test.new_user('stale_70'); fresh := test.new_user('fresh_70'); confirmed := test.new_user('conf_70');
-  update auth.users set email_confirmed_at = now() where id not in (stale, fresh);
+  update auth.users set email_confirmed_at = null where id in (stale, fresh);
   update auth.users set created_at = now() - interval '3 days' where id in (stale, confirmed);
   perform test.ok(private.purge_unconfirmed_signups() = 1, 'one stale signup purged');
   perform test.ok(not exists (select 1 from public.profiles where id = stale), 'stale profile gone');

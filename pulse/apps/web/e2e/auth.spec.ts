@@ -38,7 +38,7 @@ test('username rules are checked client-side and server-side', async ({ page }) 
   await page.getByLabel('Username').fill(taken);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page.getByRole('alert')).toHaveText(/That username is taken/);
+  await expect(page.getByRole('alert')).toHaveText(/username (is|may be) taken/);
 });
 
 test('password reset by email', async ({ page }) => {

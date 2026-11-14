@@ -9,6 +9,7 @@ export interface Profile {
   account_state: AccountState;
   username_changed_at: string | null;
   created_at: string;
+  avatar_asset_id?: string | null;
 }
 
 export interface Appearance {

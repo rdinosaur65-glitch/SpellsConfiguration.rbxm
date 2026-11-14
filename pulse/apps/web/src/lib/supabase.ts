@@ -15,6 +15,10 @@ export const supabase: SupabaseClient = createClient(url ?? 'http://invalid.loca
 /** Call a Postgres RPC and throw a readable error (PULSE error codes are mapped in errors.ts). */
 export async function rpc<T = unknown>(fn: string, args?: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
-  if (error) throw error;
+  if (error) {
+    // 2FA was turned on (possibly from another device): ask the app to re-check.
+    if (error.message === 'mfa_required') window.dispatchEvent(new Event('pulse:mfa-required'));
+    throw error;
+  }
   return data as T;
 }

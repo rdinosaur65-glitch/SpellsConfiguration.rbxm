@@ -30,17 +30,43 @@ of the user's **own** profile and settings so the offline shell can open. No cha
 friends or media are cached by the app; the service worker precaches only static assets
 and never caches API, Auth or Storage responses. Both are cleared on sign-out.
 
+## Account state (migration 0014)
+A restrictive `active_gate` policy sits next to `mfa_gate` on every table and on the media
+bucket: a suspended, banned or deleting account loses table, Storage and Realtime access
+immediately, not when its JWT expires. Its own state is readable only through
+`my_profile()`; friends can no longer read anyone's moderation state.
+
 ## Abuse controls
-- Per-user fixed-window rate limits on search, requests, messages, uploads, reports, Snap opens.
-- Search needs ≥ 3 characters, returns ≤ 20 minimal cards, hides blocked/non-active accounts.
-- A blocked user cannot see the block, find the blocker, message, request, open
-  Snaps, or use the conversation's realtime topic.
-- Registration cap and storage/egress ceilings protect the free tier.
+- Per-user fixed-window rate limits on every write RPC (messages, edits, reactions, reads,
+  pins, mutes, reports, requests, uploads, Snap opens and media URLs) plus a daily cap on
+  messages. Note: a refused call rolls back its own counter, so limits count calls that
+  pass validation.
+- Database-size guard: text and metadata writes are refused above 90% of the 500 MB budget
+  (cached size, refreshed by maintenance). Daily text quota per user (2 MB). Edits: at most
+  5 per message, no-op edits ignored.
+- Search needs ≥ 3 characters, returns ≤ 20 minimal cards, hides blocked, non-active and
+  unconfirmed accounts. A block looks like a missing account (`user_not_found`), and a
+  blocked person's pending request reads "declined", so a block cannot be detected.
+- Blocks: the blocked person loses the direct chat entirely (history, roster, settings,
+  read receipts, topic, Snaps, live Snap sessions). In groups, each side stops seeing the
+  other's messages, reactions and receipts and they are left out of the roster.
+- Ending a friendship makes the direct chat read-only (no messages, reactions, typing).
+- Co-members cannot read each other's member rows (pins, mutes, wallpaper, last read),
+  saves, or read receipts; a sender sees who read their own messages.
+- Registration cap (deleting accounts excluded), storage pools, per-user pool shares and a
+  per-user share of the daily egress budget protect the free tier.
 
 ## Media
-- Single private bucket; uploads only into paths reserved by `authorize_upload()`;
-  stored size and MIME re-verified by `confirm_upload()`; bucket-level size/MIME limits.
-- No public URLs. Viewers get ≤ 60 s signed URLs after an authorisation RPC.
+- Single private bucket; uploads only into paths reserved by `authorize_upload()`. The
+  Storage API re-checks the insert policy with the real size and type after the bytes
+  arrive, so an object larger than its reservation (or of another type) is refused;
+  `confirm_upload()` re-verifies as defence in depth. At most 5 reservations per user may
+  be outstanding; unconfirmed ones are released after 15 minutes.
+- No public URLs and no client read policy on the bucket — not even for owners — so nobody
+  can mint long-lived signed URLs. Everyone (owners too) gets ≤ 60 s signed URLs from the
+  media-url function after an authorisation RPC that charges egress.
+- Deduplicated media shared by several messages is deleted only when nothing references it;
+  uploads never attached (and replaced avatars) are reclaimed after a day.
   Snap media additionally requires a live viewing session and the URL lifetime is
   capped to the session's remaining time.
 - Honest limitation: once bytes reach a device they can be captured (screenshots,
@@ -66,9 +92,13 @@ and never caches API, Auth or Storage responses. Both are cleared on sign-out.
   content is unrecoverable (by design).
 
 ## Account deletion
-Re-authentication within 10 minutes (JWT `amr` timestamp) → profile set to
-`deleting`, auth ban, all sessions deleted, all media queued → janitor removes objects
-→ rows deleted (cascade). Report evidence snapshots are retained with the user link
+Re-authentication: a **password** sign-in within 10 minutes (JWT `amr`; verifying or
+enrolling a TOTP factor does not count); accounts with 2FA then enter their code in the same
+dialog. → profile set to `deleting`, auth ban, all sessions deleted, all media queued →
+on the next maintenance run (≤ 5 min) groups are handed to an active member, memberships
+end, object paths move to a janitor queue and the rows are deleted (cascade) without
+waiting for Storage. The username stays retired for 30 days (no impersonation). The owner
+can also delete an account (e.g. a banned one). Report evidence snapshots are retained with the user link
 nulled, per the retention policy to be published. Any platform-level backups Supabase
 keeps expire on Supabase's own schedule; the privacy policy must say so rather than
 promise instant erasure everywhere. (Verify current Free-plan backup terms at launch.)

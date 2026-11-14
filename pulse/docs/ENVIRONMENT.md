@@ -38,14 +38,34 @@ update private.platform_config set registration_cap = 50,
 - MFA → TOTP (App Authenticator) **enabled** (free on all plans; phone MFA is a paid add-on — leave off).
 - Email notifications **on** for: password changed, email changed, MFA factor enrolled/removed
   (template: `supabase/templates/security_alert.html`).
-- Redirect URLs: your `*.pages.dev` address (`/**`) and `/reset-password`.
+- Redirect URLs: list your **exact** deployment origin, e.g. `https://pulse-abc.pages.dev/**`.
+  Never a wildcard host such as `https://*.pages.dev/**`: anyone can create a `pages.dev`
+  site, and a wildcard would let it receive your users' sign-in links.
+- Email templates (Auth → Email Templates): paste `supabase/templates/confirmation.html`
+  into **Confirm signup** and `supabase/templates/recovery.html` into **Reset password**.
+  Their links carry a token hash that the app verifies itself, so they work when the email
+  is opened on another device or in another browser (the default PKCE link does not).
+- Minimum interval between confirmation/reset emails per user: **60 seconds**.
+- Bot protection (Auth → Bot and Abuse Protection): enable **Cloudflare Turnstile** (free)
+  for sign-up, password reset and resend. The hosted email cap is project-wide; without a
+  captcha, anyone holding the public anon key can use it up and block every confirmation
+  and reset email. (The web app does not render the Turnstile widget yet — see CHECKLIST.)
+
+### Email delivery (required before inviting anyone)
+Supabase's built-in mailer only delivers to members of the project's team and is heavily
+rate-limited, so real users would never receive their confirmation email. Configure a free
+SMTP provider under Auth → SMTP Settings (for example Brevo's free plan, about 300 emails a
+day) — see `docs/INFRASTRUCTURE_ZERO_COST.md` §7. The owner creates that account; PULSE
+itself needs no paid service.
 
 ### Other dashboard notes
-- Enable email confirmations; set Site URL to the `*.pages.dev` address.
+- Set Site URL to your exact `*.pages.dev` address.
 - Leave Apple/Google providers **disabled** until their credentials exist
   (Apple requires a paid developer account → not available at €0).
 - Set the "Secure email change" and "Leaked password protection" options if offered on Free.
-- Built-in email sending on Free is rate-limited; it is enough for a small community.
+- Realtime: if the dashboard offers "private channels only", leave it **off** for now: the
+  chat list and chat screen use Postgres-changes channels whose data is protected by RLS;
+  only the typing channel (`conv:<id>`) is private.
 
 ## Local tests
 | Variable | Default | Purpose |

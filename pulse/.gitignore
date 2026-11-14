@@ -7,3 +7,8 @@ supabase/.temp
 supabase/signing_keys.json
 apps/web/test-results/
 apps/web/playwright-report/
+# Secrets: never commit environment files (Supabase CLI loads supabase/functions/.env)
+.env
+.env.*
+!.env.example
+*.tsbuildinfo

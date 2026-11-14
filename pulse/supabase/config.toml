@@ -212,10 +212,15 @@ token_verifications = 30
 web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
+# PRODUCTION: enable Cloudflare Turnstile (free) in the dashboard (Auth → Bot and Abuse
+# Protection) and set VITE_TURNSTILE_SITE_KEY for the web app. The hosted email cap is
+# project-wide, so without a captcha anyone holding the anon key could use it up and block
+# every confirmation and reset email. See docs/ENVIRONMENT.md. Left off locally so the
+# end-to-end tests can sign up without a browser challenge.
 # [auth.captcha]
 # enabled = true
-# provider = "hcaptcha"
-# secret = ""
+# provider = "turnstile"
+# secret = "env(TURNSTILE_SECRET_KEY)"
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
@@ -228,7 +233,7 @@ enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+max_frequency = "60s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
@@ -244,10 +249,16 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# Links carry a token hash to the app, which verifies it with verifyOtp(). Unlike the PKCE
+# redirect, this works when the email is opened in another browser or device (e.g. an iOS
+# home-screen app vs Safari). Mirror these templates in the dashboard (docs/ENVIRONMENT.md).
+[auth.email.template.confirmation]
+subject = "Confirm your PULSE account"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Reset your PULSE password"
+content_path = "./supabase/templates/recovery.html"
 
 # Security alerts (free: sent by Supabase Auth itself; on hosted Free the built-in mailer is rate-limited).
 [auth.email.notification.password_changed]

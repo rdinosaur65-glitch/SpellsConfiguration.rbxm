@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { LIMITS, MB } from '../src/limits.ts';
+import { AUDIO_MIME, LIMITS, MB, PHOTO_MIME, VIDEO_MIME } from '../src/limits.ts';
 import {
   canEditMessage, nextUsernameChangeAt, remainingClipBudget, remainingViewMs, sha256Hex,
   splitIntoStorySegments, storageState, validateMedia, validateSnapTimer, validateUsername,
@@ -72,18 +72,39 @@ test('sha256 for dedupe', async () => {
 
 test('limits match the database migrations', () => {
   const dir = join(import.meta.dirname, '../../../supabase/migrations');
-  const sql = readdirSync(dir).map((f) => readFileSync(join(dir, f), 'utf8')).join('\n');
-  const expectInSql = (n: number, label: string) => assert.ok(sql.includes(String(n)), `${label} (${n}) missing from SQL`);
-  expectInSql(LIMITS.bytes.photo, 'photo bytes');
-  expectInSql(LIMITS.bytes.memoryPhoto, 'memory photo bytes');
-  expectInSql(LIMITS.bytes.shortVideo, 'short video bytes');
-  expectInSql(LIMITS.bytes.memoryVideo, 'memory video bytes');
-  expectInSql(LIMITS.bytes.voice, 'voice bytes');
-  expectInSql(LIMITS.memoriesQuotaBytes, 'memories quota');
-  assert.match(sql, /message_edit_window interval not null default interval '15 minutes'/);
-  assert.match(sql, /username_cooldown interval not null default interval '48 hours'/);
-  assert.match(sql, /view_seconds between 1 and 10/);
-  assert.match(sql, /pinned_rank between 1 and 3/);
-  assert.match(sql, /v_max_duration := 300/);
-  assert.match(sql, /v_max_duration := 60/);
+  const sql = readdirSync(dir).sort().map((f) => readFileSync(join(dir, f), 'utf8')).join('\n');
+  /** Capture numbers from one specific SQL context (never a bare substring search). */
+  const grab = (re: RegExp, label: string): number[] => {
+    const m = re.exec(sql);
+    assert.ok(m, `${label}: SQL pattern not found`);
+    return m.slice(1).map(Number);
+  };
+  const [memoryPhoto, photo] = grab(/elsif p_mime in \('image\/jpeg', 'image\/webp', 'image\/png'\) then\s+if p_purpose = 'memory_backup' then v_max_bytes := (\d+); else v_max_bytes := (\d+);/, 'photo caps');
+  assert.equal(photo, LIMITS.bytes.photo, 'photo bytes');
+  assert.equal(memoryPhoto, LIMITS.bytes.memoryPhoto, 'memory photo bytes');
+  const [memVideo, memVideoSecs, shortVideo, shortVideoSecs] = grab(/elsif p_mime in \('video\/mp4', 'video\/webm'\) then[\s\S]*?v_max_bytes := (\d+); v_max_duration := (\d+);\s+else v_max_bytes := (\d+); v_max_duration := (\d+);/, 'video caps');
+  assert.equal(memVideo, LIMITS.bytes.memoryVideo, 'memory video bytes');
+  assert.equal(memVideoSecs, LIMITS.memoriesVideoMaxSeconds, 'memory video seconds');
+  assert.equal(shortVideo, LIMITS.bytes.shortVideo, 'short video bytes');
+  assert.equal(shortVideoSecs, LIMITS.snap.maxVideoSeconds, 'short video seconds');
+  assert.equal(grab(/elsif p_mime in \('audio\/webm', 'audio\/mp4', 'audio\/ogg'\) then[\s\S]*?v_max_bytes := (\d+);/, 'voice cap')[0], LIMITS.bytes.voice, 'voice bytes');
+  assert.equal(grab(/if p_mime <> 'application\/octet-stream' then perform private\.fail\('invalid_media_type'\); end if;\s+v_max_bytes := (\d+);/, 'vault cap')[0], LIMITS.bytes.vaultBlob, 'vault bytes');
+  assert.equal(grab(/memories_quota_bytes bigint not null default (\d+)/, 'memories quota')[0], LIMITS.memoriesQuotaBytes);
+  assert.equal(grab(/body text check \(char_length\(body\) <= (\d+)\)/, 'message length')[0], LIMITS.messageMaxChars);
+  assert.equal(grab(/char_length\(btrim\(display_name\)\) between 1 and (\d+)/, 'display name')[0], LIMITS.displayNameMax);
+  const [mid1, mid2] = grab(/username::text ~ '\^\[a-z0-9\]\(\?:\[a-z0-9\._\]\{(\d+),(\d+)\}\)\[a-z0-9\]\$'/, 'username pattern');
+  assert.equal(mid1! + 2, LIMITS.username.min, 'username min');
+  assert.equal(mid2! + 2, LIMITS.username.max, 'username max');
+  assert.equal(grab(/username_cooldown interval not null default interval '(\d+) hours'/, 'cooldown')[0], LIMITS.username.cooldownHours);
+  assert.equal(grab(/username_reservation interval not null default interval '(\d+) days'/, 'reservation')[0], LIMITS.username.reservationDays);
+  assert.equal(grab(/message_edit_window interval not null default interval '(\d+) minutes'/, 'edit window')[0], LIMITS.messageEditWindowMinutes);
+  assert.equal(grab(/pinned_rank smallint check \(pinned_rank between 1 and (\d+)\)/, 'pins')[0], LIMITS.maxPins);
+  assert.equal(grab(/if v_count > (\d+) then perform private\.fail\('group_too_large'/, 'group size')[0], LIMITS.groupMaxMembers);
+  assert.equal(grab(/array_length\(p_members, 1\) > (\d+) then perform private\.fail\('group_too_large'/, 'group invite size')[0], LIMITS.groupMaxMembers - 1);
+  const [vMin, vMax] = grab(/view_seconds smallint check \(view_seconds between (\d+) and (\d+)\)/, 'snap timer');
+  assert.equal(vMin, LIMITS.snap.minViewSeconds); assert.equal(vMax, LIMITS.snap.maxViewSeconds);
+  const bucket = /allowed_mime_types\)\s+values \('media', 'media', false, \d+,\s+array\[([^\]]+)\]/.exec(sql);
+  assert.ok(bucket, 'bucket MIME list');
+  const listed = bucket[1]!.split(',').map((x) => x.trim().replace(/'/g, '')).sort();
+  assert.deepEqual(listed, [...PHOTO_MIME, ...VIDEO_MIME, ...AUDIO_MIME, 'application/octet-stream'].sort(), 'bucket MIME types');
 });

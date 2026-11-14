@@ -1,9 +1,9 @@
-import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
 
-export function Button({ variant = 'primary', busy, children, ...rest }:
+export function Button({ variant = 'primary', busy, disabled, children, ...rest }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' | 'subtle'; busy?: boolean }) {
   return (
-    <button className={`btn btn-${variant}`} disabled={busy || rest.disabled} aria-busy={busy || undefined} {...rest}>
+    <button className={`btn btn-${variant}`} {...rest} disabled={Boolean(busy || disabled)} aria-busy={busy || undefined}>
       {busy ? <Spinner small /> : children}
     </button>
   );
@@ -109,5 +109,42 @@ export function Icon({ name, size = 22, label }: { name: IconName; size?: number
          aria-label={label} aria-hidden={label ? undefined : true}>
       <path d={PATHS[name]} />
     </svg>
+  );
+}
+
+/**
+ * Bottom sheet that behaves as a modal dialog: focus moves into it and back to the
+ * opener on close, Tab stays inside, Escape and the backdrop close it.
+ */
+export function Sheet({ label, onClose, children, style }:
+  { label: string; onClose: () => void; children: ReactNode; style?: CSSProperties }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const el = ref.current;
+    const focusables = () => Array.from(el?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])') ?? []);
+    (el?.querySelector<HTMLElement>('[autofocus]') ?? focusables()[0] ?? el)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const first = list[0]!, last = list[list.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
+  }, []);
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div ref={ref} className="sheet" role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
+           style={style} onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
   );
 }

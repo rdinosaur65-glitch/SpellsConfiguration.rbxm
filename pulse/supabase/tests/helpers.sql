@@ -12,8 +12,8 @@ returns uuid language plpgsql as $$
 declare v uuid;
 begin
   -- Real Supabase auth.users.id has no default, so supply one (works with the shim too).
-  insert into auth.users (id, email, raw_user_meta_data)
-  values (gen_random_uuid(), p_username || '.' || gen_random_uuid() || '@test.local',
+  insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
+  values (gen_random_uuid(), p_username || '.' || gen_random_uuid() || '@test.local', now(),
           jsonb_build_object('username', p_username, 'display_name', coalesce(p_display, p_username)))
   returning id into v;
   return v;

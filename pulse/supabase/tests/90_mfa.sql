@@ -30,6 +30,15 @@ begin
   perform test.ok((select count(*) from public.user_settings) = 0, 'settings hidden at aal1');
   perform test.ok((select count(*) from public.conversations) = 0, 'chats hidden at aal1');
   perform test.ok(not private.can_use_topic('conv:' || c), 'realtime topic refused at aal1');
+  perform test.throws(format('select public.delete_message(%L)', gen_random_uuid()), 'mfa_required', 'delete_message');
+  perform test.throws(format('select public.delete_media_asset(%L)', gen_random_uuid()), 'mfa_required', 'delete_media_asset');
+  perform test.throws(format('select public.close_snap_view(%L, %L)', gen_random_uuid(), gen_random_uuid()), 'mfa_required',
+                      'close_snap_view');
+  perform test.throws(format('select public.revoke_session(%L)', gen_random_uuid()), 'mfa_required', 'revoke_session');
+  perform test.throws('select public.revoke_other_sessions()', 'mfa_required', 'revoke_other_sessions');
+  perform test.throws('select * from public.my_profile()', 'mfa_required', 'my_profile');
+  perform test.ok((select count(*) from storage.objects where bucket_id = 'media') = 0, 'no Storage reads at aal1');
+  perform test.ok(not public.am_i_owner(), 'am_i_owner false at aal1');
 
   -- aal2 session: everything works again.
   perform test.as_user(u, '{"aal":"aal2"}');
@@ -37,6 +46,24 @@ begin
   perform public.touch_presence();
   perform test.ok(public.send_message(c, 'text', 'hi', gen_random_uuid()) is not null, 'aal2 can send');
   perform test.ok(private.can_use_topic('conv:' || c), 'aal2 topic ok');
+
+  -- An owner with 2FA: every admin RPC needs aal2.
+  perform test.as_superuser();
+  update private.platform_config set owner_user_id = u;
+  perform test.as_user(u, '{"aal":"aal1"}');
+  perform test.throws('select public.admin_usage_summary()', 'mfa_required', 'admin_usage_summary');
+  perform test.throws('select * from public.admin_search_users(null)', 'mfa_required', 'admin_search_users');
+  perform test.throws('select * from public.admin_list_reports()', 'mfa_required', 'admin_list_reports');
+  perform test.throws(format($q$select public.admin_resolve_report(%L, 'dismissed')$q$, gen_random_uuid()), 'mfa_required',
+                      'admin_resolve_report');
+  perform test.throws(format($q$select public.admin_set_account_state(%L, 'suspended', 'x')$q$, v), 'mfa_required',
+                      'admin_set_account_state');
+  perform test.throws(format($q$select public.admin_delete_account(%L, 'x')$q$, v), 'mfa_required', 'admin_delete_account');
+  perform test.throws('select * from public.admin_audit_log()', 'mfa_required', 'admin_audit_log');
+  perform test.as_user(u, '{"aal":"aal2"}');
+  perform test.ok((public.admin_usage_summary() ->> 'accounts') is not null, 'owner at aal2 can administer');
+  perform test.as_superuser();
+  update private.platform_config set owner_user_id = null;
 
   -- The friend (no 2FA) is unaffected.
   perform test.as_user(v);

@@ -11,12 +11,16 @@ type Facing = 'user' | 'environment';
 export function Camera() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Bumped by stop(): a getUserMedia call that resolves after the screen was left or
+  // hidden must release its camera immediately instead of leaking it.
+  const gen = useRef(0);
   const [facing, setFacing] = useState<Facing>('environment');
   const [state, setState] = useState<'idle' | 'starting' | 'live' | 'denied' | 'unsupported' | 'error'>('idle');
   const [shot, setShot] = useState<string | null>(null);
   const [torch, setTorch] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false });
 
   const stop = useCallback(() => {
+    gen.current++;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
@@ -24,11 +28,16 @@ export function Camera() {
   const start = useCallback(async (f: Facing) => {
     if (!navigator.mediaDevices?.getUserMedia) { setState('unsupported'); return; }
     stop();
+    const mine = gen.current;
     setState('starting');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: f, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
       });
+      if (mine !== gen.current || document.visibilityState === 'hidden') {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
       const track = stream.getVideoTracks()[0];
@@ -36,6 +45,7 @@ export function Camera() {
       setTorch({ supported: Boolean(caps.torch), on: false });
       setState('live');
     } catch (e) {
+      if (mine !== gen.current) return;
       const name = (e as DOMException).name;
       setState(name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'error');
     }

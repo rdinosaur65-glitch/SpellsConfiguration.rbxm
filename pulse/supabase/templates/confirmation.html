@@ -1,0 +1,4 @@
+<h2>Confirm your PULSE account</h2>
+<p>Tap the link below to confirm {{ .Email }} and finish signing up.</p>
+<p><a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}/{{ end }}?token_hash={{ .TokenHash }}&type=email">Confirm my account</a></p>
+<p>The link works once and expires in an hour. If you didn't sign up, you can ignore this email.</p>

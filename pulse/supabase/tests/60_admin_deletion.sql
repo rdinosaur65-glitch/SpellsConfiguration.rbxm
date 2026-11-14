@@ -46,7 +46,7 @@ begin
   perform public.admin_set_account_state(u, 'banned', 'harassment report ' || rep);
   perform public.admin_resolve_report(rep, 'actioned', 'banned');
   perform test.as_superuser();
-  perform test.ok((select banned_until = 'infinity' from auth.users where id = u), 'auth-level ban');
+  perform test.ok((select banned_until > now() + interval '50 years' from auth.users where id = u), 'auth-level ban (finite date GoTrue can read)');
   perform test.ok((select count(*) from auth.sessions where user_id = u) = 0, 'sessions revoked on ban');
   perform test.ok((select count(*) from private.audit_log where target_user_id = u and action = 'account.set_state') = 1,
                   'ban audited');
@@ -113,13 +113,17 @@ begin
   perform test.ok((select status from public.media_assets where id = asset) = 'deleting', 'media deletion scheduled');
 
   perform private.run_maintenance();
-  perform test.ok(exists (select 1 from auth.users where id = d), 'account kept until media objects are removed');
-  perform test.as_superuser();
+  perform test.ok(not exists (select 1 from auth.users where id = d), 'account rows deleted without waiting for Storage');
+  perform test.ok(exists (select 1 from private.storage_trash t where t.object_path like d || '/%'),
+                  'object paths handed to the storage-janitor');
+  perform test.ok(exists (select 1 from private.retired_usernames where username = 'leaver_60'), 'username retired');
+  perform test.throws($q$select test.new_user('leaver_60')$q$, 'username_taken', 'no impersonation of a deleted user');
   perform set_config('role', 'service_role', false);
+  perform test.ok((select count(*) from public.janitor_claim_deletions(1000) j where j.object_path like d || '/%') >= 1,
+                  'janitor sees the trash');
   perform public.janitor_mark_deleted(array(select asset_id from public.janitor_claim_deletions(1000)));
   perform test.as_superuser();
-  perform private.run_maintenance();
-  perform test.ok(not exists (select 1 from auth.users where id = d), 'account rows deleted');
+  perform test.ok(not exists (select 1 from private.storage_trash t where t.object_path like d || '/%'), 'trash drained');
   perform test.ok(not exists (select 1 from public.friendships where user_a = d or user_b = d), 'relationships gone');
   perform test.ok((select target_user_id is null and evidence ? 'username' from public.reports where id = rep),
                   'report evidence retained without account link');

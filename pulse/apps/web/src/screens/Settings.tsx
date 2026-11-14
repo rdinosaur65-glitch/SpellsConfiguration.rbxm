@@ -7,6 +7,7 @@ import { ACCENTS } from '../lib/theme';
 import type { Appearance } from '../lib/types';
 import { Avatar, Banner, Button, Field, Header, Spinner, Toggle, useToast } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { setStepUp } from '../lib/stepup';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (<><h2 className="section-title">{title}</h2><div className="card">{children}</div></>);
@@ -63,13 +64,16 @@ export function Settings() {
       <Section title="Privacy">
         <Toggle label="Ghost Mode" description="Hide your online status and last active time from everyone."
                 checked={settings.ghost_mode} onChange={(v) => save({ ghost_mode: v })} />
-        <Toggle label="Show when I'm online" checked={settings.show_online} disabled={settings.ghost_mode} onChange={(v) => save({ show_online: v })} />
-        <Toggle label="Show last active" checked={settings.show_last_active} disabled={settings.ghost_mode} onChange={(v) => save({ show_last_active: v })} />
+        <Toggle label="Show when I'm online" checked={settings.show_online && !settings.ghost_mode} disabled={settings.ghost_mode}
+                description={settings.ghost_mode ? 'Hidden while Ghost Mode is on' : undefined} onChange={(v) => save({ show_online: v })} />
+        <Toggle label="Show last active" checked={settings.show_last_active && !settings.ghost_mode} disabled={settings.ghost_mode}
+                description={settings.ghost_mode ? 'Hidden while Ghost Mode is on' : undefined} onChange={(v) => save({ show_last_active: v })} />
         <Toggle label="Show when I'm typing" checked={settings.show_typing} onChange={(v) => save({ show_typing: v })} />
         <Toggle label="Data saver" description="Load media only when you tap it." checked={settings.data_saver} onChange={(v) => save({ data_saver: v })} />
       </Section>
 
       <SecuritySection onToast={showToast} email={session?.user.email ?? ''} />
+      <BlockedSection onToast={showToast} />
       <SessionsSection onToast={showToast} />
       <StorageSection />
 
@@ -152,6 +156,7 @@ function UsernameEditor({ isOwner, onSaved }: { isOwner: boolean; onSaved: () =>
 
 function SecuritySection({ onToast, email }: { onToast: (m: string) => void; email: string }) {
   const [factors, setFactors] = useState<Array<{ id: string; status: string; friendly_name?: string }> | null>(null);
+  const [factorsError, setFactorsError] = useState(false);
   const [enroll, setEnroll] = useState<{ id: string; qr: string; secret: string } | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -159,8 +164,11 @@ function SecuritySection({ onToast, email }: { onToast: (m: string) => void; ema
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const { data } = await supabase.auth.mfa.listFactors();
-    setFactors((data?.totp ?? []) as typeof factors);
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    // Never show "Off" (and offer setup) when the status could not be read.
+    if (error || !data) { setFactorsError(true); return; }
+    setFactorsError(false);
+    setFactors((data.totp ?? []) as typeof factors);
   }
   useEffect(() => { void load(); }, []);
 
@@ -204,8 +212,9 @@ function SecuritySection({ onToast, email }: { onToast: (m: string) => void; ema
       <div className="card-pad">
         {error && <Banner>{error}</Banner>}
         <div className="row"><span className="grow"><strong>Two-step verification</strong><br />
-          <span className="muted small">{verified.length ? 'On — codes from your authenticator app are required to sign in.' : 'Off'}</span></span></div>
-        {factors === null ? <Spinner small /> : verified.length > 0
+          <span className="muted small">{factorsError ? 'Couldn’t check right now.' : factors === null ? 'Checking…'
+            : verified.length ? 'On — codes from your authenticator app are required to sign in.' : 'Off'}</span></span></div>
+        {factorsError ? <Button variant="subtle" onClick={() => void load()}>Try again</Button> : factors === null ? <Spinner small /> : verified.length > 0
           ? verified.map((f) => <Button key={f.id} variant="danger" onClick={() => remove(f.id)}>Turn off</Button>)
           : enroll ? (
             <div className="stack">
@@ -285,22 +294,72 @@ function StorageSection() {
   );
 }
 
+function BlockedSection({ onToast }: { onToast: (m: string) => void }) {
+  const [rows, setRows] = useState<Array<{ user_id: string; username: string; display_name: string }> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = () => rpc<typeof rows>('my_blocked_users').then(setRows).catch(() => setRows([]));
+  useEffect(() => { void load(); }, []);
+  if (!rows || rows.length === 0) return null;
+  return (
+    <Section title="Blocked">
+      {rows.map((r) => (
+        <div key={r.user_id} className="setting-row" data-testid="blocked-row">
+          <span className="grow"><strong>{r.display_name}</strong> <span className="muted small">@{r.username}</span></span>
+          <Button className="btn btn-ghost btn-sm" busy={busy === r.user_id} onClick={async () => {
+            setBusy(r.user_id);
+            try { await rpc('unblock_user', { p_target: r.user_id }); onToast(`Unblocked @${r.username}`); await load(); }
+            catch (e) { onToast(errorMessage(e)); } finally { setBusy(null); }
+          }}>Unblock</Button>
+        </div>
+      ))}
+      <p className="muted small" style={{ padding: '0 16px 14px', margin: 0 }}>Unblocking does not restore the friendship; send a new request if you want to.</p>
+    </Section>
+  );
+}
+
 function DeleteAccount({ email, isOwner }: { email: string; isOwner: boolean }) {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<'password' | 'code'>('password');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => () => setStepUp(false), []);
   if (isOwner) return null;
 
-  async function confirmDelete() {
-    setBusy(true); setError(null);
-    // Re-authenticate: the fresh token proves identity within the server's 10-minute window.
-    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password });
-    if (authErr) { setBusy(false); setError('Wrong password.'); return; }
+  async function finish() {
     try {
       await rpc('request_account_deletion');
       await supabase.auth.signOut({ scope: 'local' });
+      setStepUp(false);
     } catch (e) { setError(errorMessage(e)); setBusy(false); }
+  }
+  // Re-authenticate in place: a fresh password sign-in (the server requires one within
+  // 10 minutes), then — for accounts with two-step verification — the code, so the
+  // session is back at aal2 before the deletion request.
+  async function confirmPassword() {
+    if (busy) return;
+    setBusy(true); setError(null);
+    setStepUp(true);
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (authErr) { setStepUp(false); setBusy(false); setError(errorMessage(authErr)); return; }
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') { setStep('code'); setBusy(false); return; }
+    await finish();
+  }
+  async function confirmCode() {
+    if (busy) return;
+    setBusy(true); setError(null);
+    const { data } = await supabase.auth.mfa.listFactors();
+    const factor = data?.totp.find((f) => f.status === 'verified');
+    const res = factor ? await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: code.trim() }) : null;
+    if (!factor || res?.error) { setBusy(false); setError('That code didn’t work. Try the newest code from your app.'); return; }
+    await finish();
+  }
+  function cancel() {
+    setOpen(false); setStep('password'); setPassword(''); setCode(''); setError(null);
+    setStepUp(false);
+    window.dispatchEvent(new Event('pulse:mfa-required'));   // re-check: the session may now need its code
   }
   return (
     <Section title="Danger zone">
@@ -309,10 +368,20 @@ function DeleteAccount({ email, isOwner }: { email: string; isOwner: boolean }) 
           <>
             <Banner>This permanently deletes your account, friends, chats you sent and your uploads. There is no recovery period.</Banner>
             {error && <Banner>{error}</Banner>}
-            <Field label="Enter your password to confirm" type="password" autoComplete="current-password" value={password}
-                   onChange={(e) => setPassword(e.target.value)} />
-            <Button variant="danger" busy={busy} disabled={!password} onClick={confirmDelete}>Permanently delete account</Button>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+            {step === 'password' ? (
+              <>
+                <Field label="Enter your password to confirm" type="password" autoComplete="current-password" value={password}
+                       onChange={(e) => setPassword(e.target.value)} />
+                <Button variant="danger" busy={busy} disabled={!password} onClick={confirmPassword}>Permanently delete account</Button>
+              </>
+            ) : (
+              <>
+                <Field label="Code from your authenticator app" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+                       autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+                <Button variant="danger" busy={busy} disabled={code.length !== 6} onClick={confirmCode}>Confirm and delete</Button>
+              </>
+            )}
+            <Button variant="ghost" onClick={cancel}>Cancel</Button>
           </>
         )}
       </div>

@@ -74,7 +74,7 @@ These numbers are the binding constraints. PULSE enforces them in code (see §5)
 |---|---|---|---|
 | File storage | 1 GB total (whole platform) | 400 MB ephemeral (Snaps, Stories, chat media) · 450 MB Memories backup · 50 MB profile assets · 100 MB safety headroom | Cloud backup is a **small** allowance, not 20 GB. Default per-user Memories backup quota: **50 MB**; a global pool guard stops new backups at 90% of 450 MB even if a user has quota left |
 | Egress | 5 GB/month | ~160 MB/day budget, tracked server-side when signed URLs are issued | ≈ 1,000 compressed photo views/day **or** ≈ 20 one-minute video views/day |
-| Database | 500 MB | Warning at 70%, text-only writes throttled at 90% | Millions of text messages; fine for a friend network |
+| Database | 500 MB | Text/metadata writes refused at 90% (`assert_db_headroom`, 0014); daily text quota of 2 MB per user; edits capped | Millions of text messages; fine for a friend network |
 | Realtime | 200 concurrent connections | — | ≈ 150 simultaneously online users |
 | Auth | 50,000 MAU | — | Not the binding constraint |
 

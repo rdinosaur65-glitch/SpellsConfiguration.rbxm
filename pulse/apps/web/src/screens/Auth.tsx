@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { validateUsername, LIMITS } from '@pulse/domain';
 import { supabase } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
@@ -29,6 +29,7 @@ function AuthLayout({ subtitle, children }: { subtitle: string; children: ReactN
 }
 
 export function SignIn() {
+  const linkFailed = Boolean((useLocation().state as { linkFailed?: boolean } | null)?.linkFailed);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,6 +56,7 @@ export function SignIn() {
   return (
     <AuthLayout subtitle="Your people. Your moments.">
       <form className="stack" onSubmit={submit} noValidate>
+        {linkFailed && !error && <Banner>That confirmation link is invalid or has expired. Sign in to get a new one.</Banner>}
         {error && <Banner>{error}{unconfirmed && <> <button type="button" className="link-btn" onClick={resend}>Resend email</button></>}</Banner>}
         {info && <Banner kind="success">{info}</Banner>}
         <Field label="Email" type="email" name="email" autoComplete="email" inputMode="email" required
@@ -146,9 +148,13 @@ export function ForgotPassword() {
     setBusy(true); setError(null);
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password` });
     setBusy(false);
-    // Same message whether or not the address exists (no account enumeration).
-    if (error && (error as { code?: string }).code === 'over_email_send_rate_limit') setError(errorMessage(error));
-    else setDone(true);
+    // Same message whether or not the address exists (no account enumeration), but never
+    // claim an email is on its way when the request did not reach the server.
+    const code = (error as { code?: string; status?: number } | null);
+    if (error && (code?.code === 'over_email_send_rate_limit' || code?.code === 'over_request_rate_limit'
+        || error.name === 'AuthRetryableFetchError' || code?.status === 0 || navigator.onLine === false)) {
+      setError(errorMessage(error));
+    } else setDone(true);
   }
 
   return (

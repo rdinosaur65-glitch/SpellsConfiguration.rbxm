@@ -24,6 +24,7 @@ create table auth.users (
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   banned_until timestamptz,
   email_confirmed_at timestamptz,
+  confirmation_sent_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -105,6 +106,7 @@ create table realtime.messages (
 );
 alter table realtime.messages enable row level security;
 grant select, insert on realtime.messages to authenticated;
+grant usage on sequence realtime.messages_id_seq to authenticated;
 create function realtime.topic() returns text language sql stable as $$
   select current_setting('realtime.topic', true)
 $$;

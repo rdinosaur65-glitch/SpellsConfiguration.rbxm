@@ -9,6 +9,26 @@ const FONTS: Record<Appearance['font'], string> = {
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
 
+// WCAG contrast helpers: accents are darkened just enough for white text on top of them
+// (buttons, own bubbles) and for accent-coloured text on the page background.
+function channel(c: number): number { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }
+function luminance([r, g, b]: number[]): number { return 0.2126 * channel(r!) + 0.7152 * channel(g!) + 0.0722 * channel(b!); }
+function contrast(a: number[], b: number[]): number {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p) as [number, number];
+  return (x + 0.05) / (y + 0.05);
+}
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const toHex = (c: number[]) => '#' + c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+/** Darken (or, on dark backgrounds, lighten) `hex` until it reaches `ratio` against `against`. */
+export function readable(hex: string, against: string, ratio = 4.5): string {
+  let c = rgb(hex); const bg = rgb(against);
+  const lighten = luminance(bg) < 0.2;
+  for (let i = 0; i < 40 && contrast(c, bg) < ratio; i++) {
+    c = c.map((v) => (lighten ? v + (255 - v) * 0.08 : v * 0.92));
+  }
+  return toHex(c);
+}
+
 const media = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: light)') : null;
 let current: Appearance | undefined;
 
@@ -21,6 +41,8 @@ export function applyAppearance(a: Appearance | undefined): void {
   root.dataset.theme = light ? 'light' : 'dark';
   const accent = a?.accent && /^#[0-9a-f]{6}$/i.test(a.accent) ? a.accent : '#8B5CF6';
   root.style.setProperty('--accent', accent);
+  root.style.setProperty('--accent-solid', readable(accent, '#ffffff'));          // white text on it
+  root.style.setProperty('--accent-text', readable(accent, light ? '#f7f7fb' : '#0b0b10'));
   root.style.setProperty('--font', FONTS[a?.font ?? 'system'] ?? FONTS.system);
   root.dataset.bubbles = a?.bubbles ?? 'rounded';
   root.dataset.reduceMotion = String(a?.reduce_motion ?? false);

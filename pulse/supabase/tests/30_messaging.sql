@@ -57,7 +57,14 @@ begin
   perform test.as_user(b);
   perform test.ok((select deleted_at is not null and body is null from public.messages where id = m2),
                   'recipient receives content-free tombstone');
-  perform test.throws(format('select public.delete_message(%L)', m2), 'message_not_found', 'cannot delete twice / others');
+  m3 := public.send_message(conv, 'text', 'not yours', gen_random_uuid());
+  perform test.as_user(a);
+  perform test.throws(format('select public.delete_message(%L)', m3), 'message_not_found', 'cannot delete others'' messages');
+  perform test.as_superuser();
+  perform test.ok((select deleted_at is null and body = 'not yours' from public.messages where id = m3), 'others'' message untouched');
+  delete from public.messages where id = m3;   -- same transaction timestamp: keep the chat-list checks below unambiguous
+  perform test.as_user(a);
+  perform test.throws(format('select public.delete_message(%L)', m2), 'message_not_found', 'cannot delete twice');
 
   -- After-view expiry (default mode).
   perform test.as_user(a);
@@ -67,6 +74,11 @@ begin
   perform public.set_message_saved(m4, true);
   perform public.mark_conversation_read(conv);
   perform test.ok((select expires_at is not null from public.messages where id = m4), 'expiry started on read');
+  perform test.ok((select expires_at between now() + interval '4 minutes' and now() + interval '6 minutes'
+                   from public.messages where id = m3), 'after_view keeps a short grace (save/reply/report)');
+  perform test.as_superuser();
+  update public.messages set expires_at = now() - interval '1 second' where id in (m3, m4);
+  perform test.as_user(b);
   perform test.ok((select count(*) from public.messages where id = m3) = 0, 'viewed message gone for recipient');
   perform test.ok((select count(*) from public.messages where id = m4) = 1, 'saved message remains');
   perform test.ok((select count(*) from public.search_messages('ephemeral')) = 0, 'expired message not searchable');
@@ -97,6 +109,9 @@ begin
   perform test.as_superuser();
   update public.messages set expires_at = now() - interval '1 second' where id = m3;
   perform private.run_maintenance();
+  perform test.ok(exists (select 1 from public.messages where id = m3), 'kept (invisible) during the report window');
+  update public.messages set expires_at = now() - interval '2 hours' where id = m3;
+  perform test.ok(jsonb_array_length(private.run_maintenance() -> 'errors') = 0, 'maintenance ran without errors');
   perform test.ok(not exists (select 1 from public.messages where id = m3), 'expired message purged');
 end $$;
 

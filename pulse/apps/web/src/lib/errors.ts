@@ -43,6 +43,25 @@ const MESSAGES: Record<string, string> = {
   egress_budget_exhausted: 'Daily media limit reached. Media will be back tomorrow.',
   media_too_large: 'That file is too large.',
   media_too_long: 'That clip is too long.',
+  media_quota_full: 'You have reached your media space. Older media frees up as it disappears.',
+  too_many_pending_uploads: 'Finish the uploads in progress first.',
+  storage_full: 'PULSE is almost out of free space. Sending is paused for now.',
+  text_quota_exceeded: 'You have sent a lot today. Please try again tomorrow.',
+  egress_quota_exceeded: 'You have reached today’s media limit. Media will load again tomorrow.',
+  edit_limit_reached: 'This message can’t be edited again.',
+  message_too_long: 'That message is too long.',
+  too_many_recipients: 'Too many recipients at once.',
+  account_deleting: 'This account is being deleted.',
+  invalid_media: 'That file can’t be sent.',
+  media_not_found: 'That media is no longer available.',
+  snap_not_found: 'That Snap is no longer available.',
+  snap_expired: 'That Snap has expired.',
+  session_active: 'This Snap is already open on another device.',
+  snap_session_invalid: 'This Snap view has ended.',
+  saving_not_permitted: 'The sender doesn’t allow saving this Snap.',
+  user_banned: 'This account has been suspended or is being deleted.',
+  'User is banned': 'This account has been suspended or is being deleted.',
+  over_request_rate_limit: 'Too many attempts. Wait a minute and try again.',
   // Supabase Auth
   'Invalid login credentials': 'Wrong email or password.',
   'Email not confirmed': 'Please confirm your email first. Check your inbox.',
@@ -51,7 +70,7 @@ const MESSAGES: Record<string, string> = {
   weak_password: 'Choose a stronger password (at least 8 characters with letters and numbers).',
   same_password: 'The new password must be different.',
   // GoTrue sometimes hides the signup trigger's code behind this generic message.
-  'Database error saving new user': 'That username is taken or unavailable. Please try another.',
+  'Database error saving new user': 'We couldn’t create that account. The username may be taken, or PULSE may be full right now.',
 };
 
 export function errorMessage(err: unknown): string {

@@ -30,10 +30,19 @@ begin
   perform test.throws(format($q$insert into storage.objects (bucket_id, name, owner, metadata) values ('media', %L, %L, '{}')$q$, p, v),
                       'sqlstate:42501', 'cannot upload into someone else''s reservation');
 
-  -- Upload verification: stored object larger than declared -> rejected, quota released.
+  -- The Storage API re-checks policies with the real size/type after the bytes arrive.
   perform test.as_user(u);
+  perform test.throws(format($q$insert into storage.objects (bucket_id, name, owner, metadata)
+                             values ('media', %L, %L, '{"size": 999999, "mimetype": "image/jpeg"}')$q$, p, u),
+                      'sqlstate:42501', 'object larger than the reservation refused by Storage');
+  perform test.throws(format($q$insert into storage.objects (bucket_id, name, owner, metadata)
+                             values ('media', %L, %L, '{"size": 1000, "mimetype": "video/mp4"}')$q$, p, u),
+                      'sqlstate:42501', 'object of another type refused by Storage');
+  -- Defence in depth (older Storage API without the final check): confirm_upload refuses.
+  perform test.as_superuser();
   insert into storage.objects (bucket_id, name, owner, metadata)
   values ('media', p, u, jsonb_build_object('size', 999999, 'mimetype', 'image/jpeg'));
+  perform test.as_user(u);
   perform test.ok(not public.confirm_upload(a1), 'oversized object rejected');
   perform test.ok((select status from public.media_assets where id = a1) = 'deleting', 'rejected upload queued for deletion');
   perform test.as_superuser();
@@ -88,12 +97,18 @@ begin
   perform test.ok((select object_path from public.authorize_media_access(img)) is not null, 'member can fetch chat media');
   perform test.throws(format('select public.authorize_media_access(%L)', mem), 'media_not_found', 'Memories are owner-only');
   perform test.ok((select count(*) from storage.objects where owner = u) = 0, 'cannot list others'' objects directly');
+  perform test.as_user(u);
+  perform test.ok((select count(*) from storage.objects where owner = u) = 0,
+                  'owners cannot read objects directly either (no long-lived signed URLs)');
+  perform test.ok((select object_path from public.authorize_media_access(mem)) is not null, 'owner downloads via media-url');
+  perform test.as_user(v);
   perform test.as_user(x);
   perform test.throws(format('select public.authorize_media_access(%L)', img), 'media_not_found', 'stranger denied');
 
   -- Daily egress budget.
   perform test.as_superuser();
   update private.platform_config set daily_egress_budget_bytes = 1;
+  delete from private.egress_recent;   -- a re-fetch within 10 minutes is not charged twice
   perform test.as_user(v);
   perform test.throws(format('select public.authorize_media_access(%L)', img), 'egress_budget_exhausted',
                       'egress budget enforced');

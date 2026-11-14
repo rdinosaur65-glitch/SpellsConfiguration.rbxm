@@ -2,10 +2,13 @@ import { NavLink, Outlet, useMatch } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { Icon } from './ui';
 import { useOnline } from '../lib/useOnline';
-import { useChatList } from '../screens/Chats';
-import { useFriendRequests } from '../screens/Friends';
+import { LiveProvider, useChatList, useFriendRequests } from '../lib/live';
 
 export function Shell() {
+  return <LiveProvider><ShellInner /></LiveProvider>;
+}
+
+function ShellInner() {
   const online = useOnline();
   const { items } = useChatList();
   const { requests } = useFriendRequests();
@@ -17,7 +20,7 @@ export function Shell() {
 
   return (
     <div className="app">
-      {!online && <div className="offline" role="status">You're offline. Messages will send when you reconnect.</div>}
+      {!online && <div className="offline" role="status">You're offline. Messages you send now go out when you reconnect, as long as PULSE stays open.</div>}
       <Outlet />
       {needRefresh && (
         <div className="update-bar" role="status">

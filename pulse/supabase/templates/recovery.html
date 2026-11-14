@@ -1,0 +1,4 @@
+<h2>Reset your PULSE password</h2>
+<p>Someone (hopefully you) asked to reset the password for {{ .Email }}.</p>
+<p><a href="{{ if .RedirectTo }}{{ .RedirectTo }}{{ else }}{{ .SiteURL }}/reset-password{{ end }}?token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a></p>
+<p>The link works once and expires in an hour. If you didn't ask for this, ignore this email; your password stays the same.</p>

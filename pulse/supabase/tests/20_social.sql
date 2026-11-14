@@ -95,8 +95,8 @@ begin
   perform test.ok((select count(*) from public.search_users('ben_20')) = 0, 'blocker hidden from search');
   perform test.ok((select count(*) from public.profiles where id = b) = 0, 'blocker profile hidden');
   perform test.ok((select count(*) from public.friend_nicknames where friend_id = b) = 0, 'nickname removed');
-  perform test.throws(format('select public.send_friend_request(%L)', b), 'not_allowed', 'cannot re-request');
-  perform test.throws(format('select public.create_direct_conversation(%L)', b), 'not_allowed', 'cannot open chat');
+  perform test.throws(format('select public.send_friend_request(%L)', b), 'user_not_found', 'cannot re-request (block looks like a missing account)');
+  perform test.throws(format('select public.create_direct_conversation(%L)', b), 'not_friends', 'cannot open chat');
   perform test.as_user(b);
   perform public.unblock_user(a);
   perform test.ok((select count(*) from public.blocks) = 0, 'unblocked');

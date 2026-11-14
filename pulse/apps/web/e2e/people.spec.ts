@@ -11,7 +11,7 @@ test('People: no Friends tab; find, request, accept, chat and come back to Chats
   await signUp(a, ua, 'Ari'); await signUp(b, ub, 'Bex');
 
   // Three tabs; friends live behind the People button in the Chats header.
-  await expect(nav(a).getByRole('link')).toHaveText(['Camera', 'Chats', 'Settings']);
+  await expect(nav(a).getByRole('link')).toHaveText(['Chats', 'Camera', 'Settings']);
   await nav(a).getByRole('link', { name: /^Chats/ }).click();
   await expect(a.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
   await a.getByTestId('people-button').click();

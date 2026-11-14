@@ -36,10 +36,10 @@ function ShellInner() {
       )}
       {!inConversation && <nav className="nav" aria-label="Main">
         <div className="nav-inner">
-          <NavLink to="/camera"><Icon name="camera" />Camera</NavLink>
           <NavLink to="/chats" className={({ isActive }) => (isActive || peopleMatch ? 'active' : undefined)}><Icon name="chat" />Chats
             {unread > 0 ? <span className="nav-badge" aria-label={`${unread} unread`}>{unread}</span>
               : incoming > 0 ? <span className="nav-dot" aria-label={`${incoming} friend request${incoming > 1 ? 's' : ''}`} /> : null}</NavLink>
+          <NavLink to="/camera"><Icon name="camera" />Camera</NavLink>
           <NavLink to="/settings"><Icon name="settings" />Settings</NavLink>
         </div>
       </nav>}

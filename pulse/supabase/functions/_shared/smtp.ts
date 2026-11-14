@@ -5,7 +5,8 @@
 //   PULSE_SMTP_HOST, PULSE_SMTP_PORT, PULSE_SMTP_TLS (implicit | none),
 //   PULSE_SMTP_USER, PULSE_SMTP_PASS, PULSE_SMTP_FROM, PULSE_SMTP_FROM_NAME
 
-export interface Mail { to: string; subject: string; text: string }
+/** text is always sent; html, when given, is sent alongside it (multipart/alternative). */
+export interface Mail { to: string; subject: string; text: string; html?: string }
 
 function config() {
   const host = Deno.env.get('PULSE_SMTP_HOST') ?? '';
@@ -24,9 +25,13 @@ function config() {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 const clean = (s: string) => s.replace(/[\r\n]+/g, ' ').trim();   // no header injection
-const b64 = (s: string) => btoa(String.fromCharCode(...enc.encode(s)));
+const b64 = (s: string) => { let out = ''; for (const b of enc.encode(s)) out += String.fromCharCode(b); return btoa(out); };
+/** Base64 body wrapped at 76 characters (keeps every line far below SMTP's 998 limit). */
+const b64Body = (s: string) => b64(s.replace(/\r?\n/g, '\r\n')).replace(/.{1,76}/g, '$&\r\n');
+/** RFC 2047 encoded-word for headers that are not plain ASCII (e.g. curly quotes). */
+const header = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64(s)}?=`);
 
-/** Sends one plain-text email. Throws on any SMTP error; the caller treats that as failed delivery. */
+/** Sends one email (plain text, plus HTML when given). Throws on any SMTP error; the caller treats that as failed delivery. */
 export async function sendMail(mail: Mail): Promise<void> {
   const c = config();
   if (!/^[^\s@<>]+@[^\s@<>]+$/.test(mail.to)) throw new Error('bad_recipient');
@@ -66,16 +71,24 @@ export async function sendMail(mail: Mail): Promise<void> {
     await send(`MAIL FROM:<${clean(c.from)}>`); await expect([250], 'mail_from');
     await send(`RCPT TO:<${clean(mail.to)}>`); await expect([250, 251], 'rcpt_to');
     await send('DATA'); await expect([354], 'data');
-    const body = mail.text.replace(/\r?\n/g, '\r\n').split('\r\n').map((l) => (l.startsWith('.') ? '.' + l : l)).join('\r\n');
+    // Base64 bodies never start a line with "." (no dot-stuffing needed) and stay 7-bit.
+    const boundary = `pulse-${crypto.randomUUID()}`;
+    const textPart = ['Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: base64', '', b64Body(mail.text)].join('\r\n');
+    const body = mail.html
+      ? [`--${boundary}`, textPart,
+         `--${boundary}`, ['Content-Type: text/html; charset=utf-8', 'Content-Transfer-Encoding: base64', '', b64Body(mail.html)].join('\r\n'),
+         `--${boundary}--`, ''].join('\r\n')
+      : b64Body(mail.text);
     const headers = [
-      `From: ${clean(c.fromName)} <${clean(c.from)}>`,
+      `From: ${header(clean(c.fromName))} <${clean(c.from)}>`,
       `To: <${clean(mail.to)}>`,
-      `Subject: ${clean(mail.subject)}`,
+      `Subject: ${header(clean(mail.subject))}`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: <${crypto.randomUUID()}@pulse.app>`,
       'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=utf-8',
-      'Content-Transfer-Encoding: 8bit',
+      ...(mail.html
+        ? [`Content-Type: multipart/alternative; boundary="${boundary}"`]
+        : ['Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: base64']),
       'Auto-Submitted: auto-generated',
     ].join('\r\n');
     await conn.write(enc.encode(`${headers}\r\n\r\n${body}\r\n.\r\n`));

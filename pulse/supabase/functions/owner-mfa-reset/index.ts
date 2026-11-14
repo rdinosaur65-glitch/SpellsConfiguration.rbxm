@@ -11,6 +11,7 @@
 // sent from a PULSE mailbox, not the owner's own, so the notice cannot reveal the owner.
 import { CORS, SERVICE_KEY, UUID, json, rpc } from '../_shared/http.ts';
 import { sendMail } from '../_shared/smtp.ts';
+import { renderEmail } from '../_shared/email.ts';
 
 /** Mailbox identity for comparison: lower case; for Gmail, dots and "+tag" do not matter and
  *  googlemail.com is gmail.com (all deliver to the same inbox). */
@@ -31,34 +32,38 @@ const STATUS: Record<string, number> = {
   owner_email_unverified: 409, request_not_found: 404,
 };
 
-function codeEmail(code: string, target: string): { subject: string; text: string } {
-  return {
-    subject: 'PULSE: confirm a two-step verification reset',
-    text: [
-      `A two-step verification reset was requested for @${target} from the PULSE owner panel.`,
-      '',
-      `Confirmation code: ${code}`,
-      '',
-      'The code works once and expires in 5 minutes. Enter it in the owner panel to continue.',
-      'If you did not start this, do not enter the code: nothing changes without it.',
-      'Consider changing your password and checking "Where you\'re signed in".',
-    ].join('\n'),
-  };
+// Both emails use the shared PULSE layout (HTML + plain text). The rules they state are the
+// database's: a code expires 5 minutes after it is sent, is cleared once verified (one use),
+// and 5 wrong entries lock the request (admin_mfa_reset_confirm / mfa_reset_mark_sent).
+// PULSE_SITE_URL (optional secret) adds an "Open PULSE" button to the notice.
+const SITE_URL = (Deno.env.get('PULSE_SITE_URL') ?? '').trim();
+
+export function codeEmail(code: string, target: string) {
+  return renderEmail({
+    preheader: 'Your verification code for a two-step verification reset.',
+    heading: 'Confirm your security request',
+    paragraphs: ['A request was made to reset two-step verification for a PULSE account through the owner administration panel.',
+      'Enter this code in the owner panel to continue.'],
+    details: [['Account', `@${target}`]],
+    code, codeLabel: 'Verification code',
+    note: 'This code expires in 5 minutes and can only be used once. After five incorrect entries the request is locked.',
+    notice: { title: 'Security notice', text: 'If you did not initiate this request, do not share or enter this code. No changes will be made without successful verification.' },
+    footer: 'You’re receiving this email because you are the owner of this PULSE community.',
+  }, 'Security Verification | PULSE');
 }
 
-const NOTICE = {
-  subject: 'PULSE: two-step verification was reset on your account',
-  text: [
-    'Two-step verification on your PULSE account was reset by the PULSE administrator,',
-    'and you were signed out on all devices.',
-    '',
-    'Sign in again with your password, then turn two-step verification back on in',
-    'Settings → Security.',
-    '',
-    'If you did not ask for this, change your password straight away and contact the',
-    'person who invited you to PULSE.',
-  ].join('\n'),
-};
+export function noticeEmail(account: string) {
+  return renderEmail({
+    preheader: 'Two-step verification was reset and you were signed out everywhere.',
+    heading: 'Two-step verification was reset',
+    paragraphs: ['The PULSE owner reset two-step verification on your account, and you were signed out on all devices.',
+      'Sign in again with your password, then turn two-step verification back on in Settings → Security.'],
+    details: [['Account', account]],
+    ...(SITE_URL.startsWith('https://') ? { button: { label: 'Open PULSE', href: SITE_URL } } : {}),
+    notice: { title: 'Didn’t ask for this?', text: 'Reset your password straight away with “Forgot password?” on the sign-in screen, and contact the person who invited you to PULSE.' },
+    footer: 'This security notice is sent whenever two-step verification is reset on your PULSE account.',
+  }, 'Two-step verification was reset | PULSE');
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -109,7 +114,7 @@ Deno.serve(async (req) => {
     let notified = false;
     const email = done.data[0]?.target_email;
     if (email) {
-      try { await sendMail({ to: email, ...NOTICE }); notified = true; } catch { notified = false; }
+      try { await sendMail({ to: email, ...noticeEmail(email) }); notified = true; } catch { notified = false; }
     }
     await rpc('mfa_reset_notified', { p_request: body.request_id, p_delivered: notified }, SERVICE_KEY);
     return json(200, { status: 'completed', notified });

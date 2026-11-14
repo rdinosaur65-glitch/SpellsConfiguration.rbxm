@@ -108,8 +108,8 @@ test('owner panel: resetting someone\'s 2FA needs a code emailed to the owner', 
   await expect(sheet.getByText('We emailed a 6-digit code to your owner email address')).toBeVisible();
 
   // The code goes to the owner's address only; the page never sees it.
-  const text = await emailText(ownerEmail, /confirm a two-step verification reset/i, started);
-  const code = /Confirmation code: (\d{6})/.exec(text)?.[1] ?? '';
+  const text = await emailText(ownerEmail, /security verification/i, started);
+  const code = /Verification code: (\d{6})/.exec(text)?.[1] ?? '';
   expect(code).toMatch(/^\d{6}$/);
   expect(await o.content()).not.toContain(code);
 

@@ -32,6 +32,33 @@ Fixed while verifying: the functions sent the new-format service key next to the
 anon key, which the gateway rejects (`Expected 3 parts in JWT`). `serviceHeaders()` now
 sends a secret key on its own; redeployed and re-verified.
 
+## Email design (live)
+One layout for every email (`supabase/functions/_shared/email.ts`): dark charcoal card on
+black, centred PULSE wordmark, white headings, white call-to-action button, large code box
+for one-time codes, highlighted security notice, consistent footer. Table layout with inline
+styles, no images or web fonts, Outlook fallbacks, `color-scheme` meta, preheader text.
+Applied to all 10 Supabase Auth templates and to both owner-2FA-reset emails (Edge Function,
+sent as HTML + plain text).
+
+Sent for real through Gmail to test addresses on the live project (all accepted):
+verification, password reset, password changed, re-authentication code, 2FA on, 2FA off,
+email change (to both addresses), email changed, sign-in link, invitation, owner
+"Security Verification" code (owner address), "2FA was reset" notice.
+
+Behaviour checked on the live project:
+| Rule stated in the emails | Check | Result |
+|---|---|---|
+| Links can only be used once | same verification link twice | 2nd: `otp_expired` |
+| Links expire after 60 minutes | lifetime set to 60 s for the test, link used after 75 s, then restored to 3600 s | `otp_expired` |
+| Email change needs both addresses | confirmed current, then new | changed only after both |
+| Owner code: 5 minutes | correct code entered after 5 min 5 s | `expired`, nothing reset |
+| Owner code: one use | correct code entered twice | 2nd: `used` |
+| Owner code: locked after 5 wrong entries | `supabase/tests/functions.test.mjs` (local stack, CI) | locked |
+
+Not verifiable from here: how the delivered messages look inside Gmail (web, iPhone app),
+Apple Mail and Outlook. Supabase Auth sends HTML only (no plain-text part is supported for
+its templates); the Edge Function emails include a plain-text part.
+
 ## Prepared, not live
 - Web app built for GitHub Pages (`scripts/build-pages.sh`): sub-folder routing, service
   worker and manifest scoped to `/SpellsConfiguration.rbxm/`, CSP pinned to this project,

@@ -245,10 +245,14 @@ test('2FA reset of another account needs the code emailed to the owner', async (
     const req = await resetFn(owner.token, { action: 'request', target_id: target.id, reason: 'lost phone' });
     assert.equal(req.status, 200, JSON.stringify(req.data));
     assert.equal(Object.keys(req.data).sort().join(','), 'expires_in,request_id', 'no code or address in the response');
-    const mail = await mailTo(emailOf(owner.id), /confirm a two-step verification reset/i, { after: started });
+    const mail = await mailTo(emailOf(owner.id), /security verification/i, { after: started });
     assert.ok(mail, 'code emailed to the owner');
-    assert.equal(await mailTo(emailOf(target.id), /confirm a two-step/i, { after: started }), null, 'never to the target');
-    const code = /Confirmation code: (\d{6})/.exec(mail.Text)?.[1];
+    assert.equal(await mailTo(emailOf(target.id), /security verification/i, { after: started }), null, 'never to the target');
+    const code = /Verification code: (\d{6})/.exec(mail.Text)?.[1];
+    // Same design as the Auth emails: HTML part with the code in its box, plain-text part too.
+    assert.match(mail.HTML ?? '', /Confirm your security request/, 'HTML part');
+    assert.ok((mail.HTML ?? '').includes(`>${code}</span>`), 'code shown in the HTML code box');
+    assert.match(mail.Text, /@\S+/, 'account identifier in the text part');
     assert.match(code ?? '', /^\d{6}$/);
 
     // Wrong code, then the right one; replay refused; target reset and signed out.
@@ -270,6 +274,8 @@ test('2FA reset of another account needs the code emailed to the owner', async (
     assert.ok(notice, 'target notified');
     assert.ok(!notice.Text.includes(emailOf(owner.id)) && !JSON.stringify(notice.From).includes(emailOf(owner.id)),
       'notice does not reveal the owner email');
+    assert.match(notice.HTML ?? '', /Two-step verification was reset/, 'notice has the HTML design too');
+    assert.ok(!(notice.HTML ?? '').includes(emailOf(owner.id)), 'HTML part does not reveal the owner email either');
     assert.equal(sql(`select count(*) from private.audit_log where target_user_id = '${target.id}' and action in
       ('account.mfa_reset.requested','account.mfa_reset.code_sent','account.mfa_reset.code_incorrect',
        'account.mfa_reset.verified','account.mfa_reset.completed','account.mfa_reset.user_notified')`), '6', 'fully audited');
@@ -304,7 +310,7 @@ test('2FA reset of another account needs the code emailed to the owner', async (
     assert.equal(same.status, 409, JSON.stringify(same.data));
     assert.equal(same.data.error, 'smtp_sender_is_owner');
     assert.equal(sql(`select status from private.mfa_reset_requests where target_id = '${other.id}' order by created_at desc limit 1`), 'failed');
-    assert.equal(await mailTo(sender, /confirm a two-step/i, { after: t0 }), null, 'no code sent');
+    assert.equal(await mailTo(sender, /security verification/i, { after: t0 }), null, 'no code sent');
     assert.equal(sql(`select count(*) from auth.mfa_factors where user_id = '${other.id}'`), '1', 'nothing reset');
   } finally {
     sql('update private.platform_config set owner_user_id = null');

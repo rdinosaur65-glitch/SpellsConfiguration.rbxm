@@ -46,9 +46,13 @@ may also need manual approval before they can send.
 Follow the list in `docs/ENVIRONMENT.md` → "Supabase Auth settings". In short:
 - Email confirmations **on**; minimum password length 8 with letters and digits.
 - Multi-factor: **TOTP on** (free). Phone MFA off.
-- Email templates: paste `supabase/templates/confirmation.html` into **Confirm signup** and
-  `supabase/templates/recovery.html` into **Reset password**; the security-alert template
-  (`security_alert.html`) for password, email and 2FA changes.
+- Email templates: all PULSE emails share one design (`supabase/functions/_shared/email.ts`,
+  rendered into `supabase/templates/*.html` by `node --experimental-strip-types
+  supabase/templates/build.ts`). Apply them in one go:
+  `SUPABASE_ACCESS_TOKEN=<token> node scripts/apply-email-templates.mjs <project-ref>`
+  (verification, reset, email change, sign-in link, invite, re-authentication code and the
+  four security alerts), or paste each file into Auth → Email Templates using the subjects in
+  `supabase/templates/manifest.json`.
 - Minimum time between emails to one person: 60 seconds.
 - URL configuration: **Site URL** and **Redirect URL** = your exact app address from
   step 6 (e.g. `https://pulse-abc.pages.dev` and `https://pulse-abc.pages.dev/**`). Never a

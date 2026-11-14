@@ -48,12 +48,12 @@ update private.platform_config set registration_cap = 50,
 - Secure password change **on**.
 - MFA → TOTP (App Authenticator) **enabled** (free on all plans; phone MFA is a paid add-on — leave off).
 - Email notifications **on** for: password changed, email changed, MFA factor enrolled/removed
-  (template: `supabase/templates/security_alert.html`).
+  (templates: `password_changed.html`, `email_changed.html`, `mfa_enrolled.html`, `mfa_unenrolled.html`).
 - Redirect URLs: list your **exact** deployment origin, e.g. `https://pulse-abc.pages.dev/**`.
   Never a wildcard host such as `https://*.pages.dev/**`: anyone can create a `pages.dev`
   site, and a wildcard would let it receive your users' sign-in links.
-- Email templates (Auth → Email Templates): paste `supabase/templates/confirmation.html`
-  into **Confirm signup** and `supabase/templates/recovery.html` into **Reset password**.
+- Email templates: `scripts/apply-email-templates.mjs` (see docs/LAUNCH_GUIDE.md §3), or paste
+  them from `supabase/templates/` with the subjects in `manifest.json`.
   Their links carry a token hash that the app verifies itself, so they work when the email
   is opened on another device or in another browser (the default PKCE link does not).
 - Minimum interval between confirmation/reset emails per user: **60 seconds**.
@@ -85,7 +85,8 @@ itself needs no paid service.
 ```sh
 npx supabase functions deploy media-url storage-janitor owner-mfa-reset
 npx supabase secrets set JANITOR_SECRET=<long random string>
-# owner-mfa-reset: see docs/LAUNCH_GUIDE.md §5 for the PULSE_SMTP_* secrets
+# owner-mfa-reset: see docs/LAUNCH_GUIDE.md §5 for the PULSE_SMTP_* secrets; optional PULSE_SITE_URL
+# (https://…) adds an "Open PULSE" button to the 2FA-reset notice
 ```
 Then, once, in the SQL editor (Vault keeps both encrypted; the janitor job is a no-op until
 they exist, and it only calls the function when something is waiting to be deleted):

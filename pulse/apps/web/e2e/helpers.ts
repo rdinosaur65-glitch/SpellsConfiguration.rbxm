@@ -56,7 +56,7 @@ export async function signUp(page: Page, username: string, displayName: string):
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.getByText('We sent a confirmation link')).toBeVisible();
-  const link = await linkFromEmail(email, /confirm/i);
+  const link = await linkFromEmail(email, /verify your email/i);
   await page.goto(link);
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   return email;

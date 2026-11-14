@@ -1,0 +1,42 @@
+{
+  "confirmation": {
+    "subject": "Verify your email address | PULSE",
+    "file": "confirmation.html"
+  },
+  "recovery": {
+    "subject": "Reset your password | PULSE",
+    "file": "recovery.html"
+  },
+  "email_change": {
+    "subject": "Confirm your new email address | PULSE",
+    "file": "email_change.html"
+  },
+  "magic_link": {
+    "subject": "Your sign-in link | PULSE",
+    "file": "magic_link.html"
+  },
+  "invite": {
+    "subject": "You’re invited to PULSE",
+    "file": "invite.html"
+  },
+  "reauthentication": {
+    "subject": "Your verification code | PULSE",
+    "file": "reauthentication.html"
+  },
+  "password_changed_notification": {
+    "subject": "Your password was changed | PULSE",
+    "file": "password_changed.html"
+  },
+  "email_changed_notification": {
+    "subject": "Your email address was changed | PULSE",
+    "file": "email_changed.html"
+  },
+  "mfa_factor_enrolled_notification": {
+    "subject": "Two-step verification was turned on | PULSE",
+    "file": "mfa_enrolled.html"
+  },
+  "mfa_factor_unenrolled_notification": {
+    "subject": "Two-step verification was turned off | PULSE",
+    "file": "mfa_unenrolled.html"
+  }
+}

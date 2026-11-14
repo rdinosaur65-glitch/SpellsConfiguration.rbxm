@@ -252,34 +252,51 @@ otp_expiry = 3600
 # Links carry a token hash to the app, which verifies it with verifyOtp(). Unlike the PKCE
 # redirect, this works when the email is opened in another browser or device (e.g. an iOS
 # home-screen app vs Safari). Mirror these templates in the dashboard (docs/ENVIRONMENT.md).
+# Generated design: supabase/templates/build.ts (shared layout with the Edge Function emails).
+# The hosted project gets the same files via scripts/apply-email-templates.mjs.
 [auth.email.template.confirmation]
-subject = "Confirm your PULSE account"
+subject = "Verify your email address | PULSE"
 content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.recovery]
-subject = "Reset your PULSE password"
+subject = "Reset your password | PULSE"
 content_path = "./supabase/templates/recovery.html"
 
-# Security alerts (free: sent by Supabase Auth itself; on hosted Free the built-in mailer is rate-limited).
+[auth.email.template.email_change]
+subject = "Confirm your new email address | PULSE"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.magic_link]
+subject = "Your sign-in link | PULSE"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.invite]
+subject = "You’re invited to PULSE"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.reauthentication]
+subject = "Your verification code | PULSE"
+content_path = "./supabase/templates/reauthentication.html"
+
 [auth.email.notification.password_changed]
 enabled = true
-subject = "PULSE: your password was changed"
-content_path = "./supabase/templates/security_alert.html"
+subject = "Your password was changed | PULSE"
+content_path = "./supabase/templates/password_changed.html"
 
 [auth.email.notification.email_changed]
 enabled = true
-subject = "PULSE: your email address was changed"
-content_path = "./supabase/templates/security_alert.html"
+subject = "Your email address was changed | PULSE"
+content_path = "./supabase/templates/email_changed.html"
 
 [auth.email.notification.mfa_factor_enrolled]
 enabled = true
-subject = "PULSE: two-step verification was turned on"
-content_path = "./supabase/templates/security_alert.html"
+subject = "Two-step verification was turned on | PULSE"
+content_path = "./supabase/templates/mfa_enrolled.html"
 
 [auth.email.notification.mfa_factor_unenrolled]
 enabled = true
-subject = "PULSE: two-step verification was turned off"
-content_path = "./supabase/templates/security_alert.html"
+subject = "Two-step verification was turned off | PULSE"
+content_path = "./supabase/templates/mfa_unenrolled.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

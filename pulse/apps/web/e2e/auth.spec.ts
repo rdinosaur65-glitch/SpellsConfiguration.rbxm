@@ -14,7 +14,7 @@ test('sign-up requires email confirmation, then signs in', async ({ page }) => {
   await signIn(page, email);
   await expect(page.getByRole('alert')).toContainText('confirm your email');
 
-  await page.goto(await linkFromEmail(email, /confirm/i));
+  await page.goto(await linkFromEmail(email, /verify your email/i));
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByTestId('my-username')).toHaveText(`@${username}`);

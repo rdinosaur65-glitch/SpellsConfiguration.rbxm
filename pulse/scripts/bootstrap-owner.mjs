@@ -2,7 +2,7 @@
 // Creates the first PULSE owner account on a hosted project, without an invitation.
 //
 //   SUPABASE_ACCESS_TOKEN=<personal access token> node scripts/bootstrap-owner.mjs \
-//     <project-ref> <owner-email> <username> <site-url>
+//     <project-ref> <owner-email> <username> <site-url> [display name]
 //
 // How it stays safe (migration 0031):
 // - It only works while the project has no owner.
@@ -16,7 +16,8 @@
 // Requires database access (the Management API token), which is exactly who may do this.
 import { createHash, randomBytes } from 'node:crypto';
 
-const [ref, email, username, site] = process.argv.slice(2);
+const [ref, email, username, site, displayArg] = process.argv.slice(2);
+const displayName = (displayArg ?? '').trim().slice(0, 40) || username;
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 const fail = (m) => { console.error(m); process.exit(1); };
 if (!token || !/^[a-z0-9]{20}$/.test(ref ?? '') || !/^[^\s@'"<>]+@[^\s@'"<>]+\.[a-z]{2,}$/i.test(email ?? '')
@@ -48,7 +49,7 @@ const url = `https://${ref}.supabase.co/auth/v1`;
 
 const created = await fetch(`${url}/admin/users`, {
   method: 'POST', headers: { ...auth(service), 'Content-Type': 'application/json' },
-  body: JSON.stringify({ email, email_confirm: false, user_metadata: { username, display_name: username, owner_bootstrap_token: secret } }),
+  body: JSON.stringify({ email, email_confirm: false, user_metadata: { username, display_name: displayName, owner_bootstrap_token: secret } }),
 });
 if (!created.ok) {
   await query('update private.platform_config set owner_bootstrap_hash = null, owner_bootstrap_email = null where id and owner_user_id is null');

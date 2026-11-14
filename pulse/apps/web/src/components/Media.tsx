@@ -76,6 +76,10 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [video, setVideo] = useState(false);
+  const [mime, setMime] = useState('');
+  const [needsSound, setNeedsSound] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const videoEl = useRef<HTMLVideoElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const st = useRef({ closed: false, mounted: false, session: null as string | null, src: null as string | null });
@@ -117,9 +121,9 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
         }
         if (!alive) return;
         setView(v);
-        const { url, video: isVideo } = await snapObjectUrl(snapId, v.session_id);
+        const { url, video: isVideo, type } = await snapObjectUrl(snapId, v.session_id);
         if (!alive || st.current.closed) { URL.revokeObjectURL(url); return; }
-        st.current.src = url; setVideo(isVideo); setSrc(url);
+        st.current.src = url; setVideo(isVideo); setMime(type); setSrc(url);
       } catch (e) { if (alive) setError(errorMessage(e)); }
     })();
     return () => { alive = false; };
@@ -153,9 +157,10 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     try {
       await rpc('save_snap', { p_snap: snapId, p_session: view.session_id });
       const a = document.createElement('a');
-      a.href = src; a.download = `pulse-snap-${snapId.slice(0, 8)}.${video ? 'webm' : 'jpg'}`; a.click();
+      const ext = mime.includes('mp4') ? 'mp4' : mime.includes('webm') ? 'webm' : mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+      a.href = src; a.download = `pulse-snap-${snapId.slice(0, 8)}.${ext}`; a.click();
       setSaved(true);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { setSaveError(errorMessage(e)); }   // the Snap stays on screen
   }
 
   // Taps close it once something is on screen (a stray tap while loading does not).
@@ -164,15 +169,24 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     <div className="snap-viewer" role="dialog" aria-modal="true" aria-label="Snap" data-testid="snap-viewer" onClick={tapClose}>
       {error ? <p className="snap-msg">{error}</p> : !src ? <Spinner /> : video ? (
         // Plays once, with sound, then closes; the server's session ends with the video too.
-        <video src={src} className="snap-image" data-testid="snap-video" autoPlay playsInline controls={false}
+        <video ref={videoEl} src={src} className="snap-image" data-testid="snap-video" autoPlay playsInline controls={false}
                disablePictureInPicture controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()}
-               onTimeUpdate={(e) => { const v = e.currentTarget; if (v.duration) setLeft(Math.max(0, Math.ceil(v.duration - v.currentTime))); }}
-               onLoadedData={(e) => { const v = e.currentTarget; void v.play().catch(() => { v.muted = true; void v.play().catch(() => {}); }); }}
+               onTimeUpdate={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) setLeft(Math.max(0, Math.ceil(v.duration - v.currentTime))); }}
+               onLoadedData={(e) => {
+                 // Some browsers (iPhone) refuse sound without a fresh tap: play muted and offer it.
+                 const v = e.currentTarget;
+                 void v.play().catch(() => { v.muted = true; setNeedsSound(true); void v.play().catch(() => {}); });
+               }}
                onEnded={() => void finish(true)} onError={() => setError('This video could not be played.')} />
       ) : (
         <img src={src} alt="Snap" className="snap-image" data-testid="snap-image" draggable={false}
              onContextMenu={(e) => e.preventDefault()} />
       )}
+      {needsSound && (
+        <button className="btn btn-sm snap-sound" onClick={(e) => { e.stopPropagation(); const v = videoEl.current; if (v) { v.muted = false; void v.play().catch(() => {}); } setNeedsSound(false); }}>
+          🔇 Tap for sound</button>
+      )}
+      {saveError && <p className="snap-msg snap-save-error">{saveError}</p>}
       <div className="snap-hud" onClick={(e) => e.stopPropagation()}>
         <span className="pill" data-testid="snap-timer">
           {view ? (view.unlimited ? 'Tap anywhere to close' : left !== null ? `${left}s` : '') : ''}

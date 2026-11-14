@@ -29,6 +29,9 @@ export function Camera() {
   const [recording, setRecording] = useState<number | null>(null);      // seconds elapsed
   const rec = useRef<{ r: MediaRecorder; mic: MediaStream | null; started: number; chunks: Blob[]; timer: ReturnType<typeof setInterval> } | null>(null);
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const held = useRef(false);          // finger still on the shutter
+  const clipStarting = useRef(false);  // waiting for the microphone
+  const discard = useRef(false);       // drop the clip being recorded (screen hidden)
   const pickRef = useRef<HTMLInputElement>(null);
 
   // Fallback when the live camera cannot run here (permission blocked, older iOS home-screen
@@ -80,7 +83,12 @@ export function Camera() {
 
   // Release the camera whenever the screen is hidden or left (battery + privacy).
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === 'hidden') { stop(); setState('idle'); } };
+    const onVis = () => {
+      if (document.visibilityState !== 'hidden') return;
+      held.current = false;
+      if (rec.current) { discard.current = true; void stopClip(); }   // never keep sound recorded in the background
+      stop(); setState('idle');
+    };
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); stop(); };
   }, [stop]);
@@ -88,16 +96,21 @@ export function Camera() {
   const MAX_CLIP_S = 15;
   function videoMime(): string | undefined {
     if (typeof MediaRecorder === 'undefined') return undefined;
-    return ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+    // MP4/H.264 first: it plays on every phone (WebM VP9 does not on older iPhones).
+    return ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
       .find((t) => MediaRecorder.isTypeSupported(t));
   }
   async function startClip() {
     const cam = streamRef.current;
     const mimeType = videoMime();
-    if (!cam || !mimeType || rec.current) return;
+    if (!cam || !mimeType || rec.current || clipStarting.current) return;
+    clipStarting.current = true;
     // Sound if the microphone is allowed; otherwise a silent clip.
     const mic = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-    if (!streamRef.current) { mic?.getTracks().forEach((t) => t.stop()); return; }
+    clipStarting.current = false;
+    // Released (or the camera closed) while the microphone was opening: record nothing.
+    if (!streamRef.current || !held.current) { mic?.getTracks().forEach((t) => t.stop()); return; }
+    discard.current = false;
     const stream = new MediaStream([...cam.getVideoTracks(), ...(mic?.getAudioTracks() ?? [])]);
     const r = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 64_000 });
     const chunks: Blob[] = [];
@@ -106,11 +119,13 @@ export function Camera() {
     const timer = setInterval(() => {
       const s = (performance.now() - started) / 1000;
       setRecording(Math.floor(s));
-      if (s >= MAX_CLIP_S) void stopClip();
+      if (s >= MAX_CLIP_S) { if (rec.current?.r === r) void stopClip(); else { clearInterval(timer); if (r.state !== 'inactive') r.stop(); } }
     }, 200);
     r.onstop = () => {
       const seconds = Math.min(MAX_CLIP_S, Math.round((performance.now() - started) / 100) / 10);
+      clearInterval(timer);
       mic?.getTracks().forEach((t) => t.stop());
+      if (discard.current) { discard.current = false; return; }
       const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
       if (seconds < 0.5 || blob.size === 0) { showToast('Hold a little longer to record a video.'); return; }
       setClip({ blob, url: URL.createObjectURL(blob), seconds });
@@ -125,14 +140,22 @@ export function Camera() {
     setRecording(null);
     if (!cur) return;
     clearInterval(cur.timer);
+    cur.mic?.getTracks().forEach((t) => t.stop());
     if (cur.r.state !== 'inactive') cur.r.stop();
   }
   function shutterDown() {
+    held.current = true;
     if (hold.current) clearTimeout(hold.current);
     hold.current = setTimeout(() => { hold.current = null; void startClip(); }, 350);
   }
   function shutterUp() {
+    held.current = false;
     if (hold.current) { clearTimeout(hold.current); hold.current = null; capture(); return; }   // a tap
+    void stopClip();
+  }
+  function shutterCancel() {          // the system took the touch (e.g. a permission prompt)
+    held.current = false;
+    if (hold.current) { clearTimeout(hold.current); hold.current = null; return; }
     void stopClip();
   }
   function discardClip() {
@@ -201,7 +224,8 @@ export function Camera() {
         {state === 'live' && !shot && !clip && (
           <button className={`shutter${recording !== null ? ' recording' : ''}`} aria-label="Take photo (hold to record a video)"
                   onPointerDown={(e) => { e.preventDefault(); shutterDown(); }} onPointerUp={shutterUp}
-                  onPointerLeave={() => { if (recording !== null) void stopClip(); }}
+                  onPointerCancel={shutterCancel}
+                  onPointerLeave={() => { held.current = false; if (recording !== null) void stopClip(); }}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); capture(); } }}
                   onContextMenu={(e) => e.preventDefault()} />
         )}

@@ -30,7 +30,9 @@ export class VoiceRecorder {
   async start(onAutoStop: () => void): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     const mimeType = pickMime();
-    this.rec = new MediaRecorder(this.stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : undefined);
+    try {
+      this.rec = new MediaRecorder(this.stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : undefined);
+    } catch (e) { this.release(); throw e; }
     this.chunks = [];
     this.rec.ondataavailable = (e) => { if (e.data.size > 0) this.chunks.push(e.data); };
     this.rec.onstop = () => {

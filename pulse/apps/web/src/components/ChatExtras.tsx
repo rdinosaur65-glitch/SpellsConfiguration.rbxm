@@ -17,14 +17,20 @@ interface ReactionRow { message_id: string; user_id: string; emoji: string }
  */
 export function useReactions(convId: string) {
   const [rows, setRows] = useState<ReactionRow[]>([]);
+  const pending = useRef(new Set<string>());     // messages with my toggle in flight
+  const seq = useRef(0);
   const reload = useCallback(async () => {
+    const n = ++seq.current;
     const { data } = await supabase.from('message_reactions').select('message_id,user_id,emoji')
-      .eq('conversation_id', convId).limit(2000);
-    setRows((data ?? []) as ReactionRow[]);
+      .eq('conversation_id', convId).order('created_at', { ascending: false }).limit(2000);
+    if (n !== seq.current) return;               // a newer reload is on its way
+    // Rows of a message I am toggling right now stay as I set them.
+    setRows((cur) => [...((data ?? []) as ReactionRow[]).filter((r) => !pending.current.has(r.message_id)),
+      ...cur.filter((r) => pending.current.has(r.message_id))]);
   }, [convId]);
   useEffect(() => { setRows([]); void reload(); }, [reload]);
   const apply = useCallback((r: Partial<ReactionRow>) => {
-    if (!r.message_id || !r.user_id || !r.emoji) return;
+    if (!r.message_id || !r.user_id || !r.emoji || pending.current.has(r.message_id)) return;
     setRows((cur) => [...cur.filter((x) => !(x.message_id === r.message_id && x.user_id === r.user_id)), r as ReactionRow]);
   }, []);
   const byMessage = useMemo(() => {
@@ -34,13 +40,17 @@ export function useReactions(convId: string) {
   }, [rows]);
   /** Toggle my reaction (same emoji again removes it), optimistically. */
   const toggle = useCallback(async (messageId: string, emoji: string, me: string) => {
+    if (pending.current.has(messageId)) return;   // one change at a time per message (no add/undo race)
+    pending.current.add(messageId);
     const mine = rows.find((r) => r.message_id === messageId && r.user_id === me);
-    setRows((cur) => {
+    const set = (on: boolean) => setRows((cur) => {
       const rest = cur.filter((x) => !(x.message_id === messageId && x.user_id === me));
-      return mine?.emoji === emoji ? rest : [...rest, { message_id: messageId, user_id: me, emoji }];
+      return on ? [...rest, { message_id: messageId, user_id: me, emoji }] : rest;
     });
-    try { await rpc('toggle_reaction', { p_msg: messageId, p_emoji: emoji }); }
-    catch (e) { await reload(); throw e; }
+    set(mine?.emoji !== emoji);
+    try { set(await rpc<boolean>('toggle_reaction', { p_msg: messageId, p_emoji: emoji })); }   // the server's answer is final
+    catch (e) { pending.current.delete(messageId); await reload(); throw e; }
+    pending.current.delete(messageId);
   }, [rows, reload]);
   return { byMessage, reload, apply, toggle };
 }

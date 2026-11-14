@@ -418,14 +418,25 @@ export function Chat() {
     const t = setInterval(() => setRecSeconds(Math.floor(recorder.current?.elapsed() ?? 0)), 250);
     return () => clearInterval(t);
   }, [recording]);
-  useEffect(() => () => recorder.current?.cancel(), []);
+  const voiceStarting = useRef<VoiceRecorder | null>(null);
+  const [voiceOpening, setVoiceOpening] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; recorder.current?.cancel(); voiceStarting.current?.cancel(); }; }, []);
   async function startVoice() {
-    if (recording || !conv) return;
+    if (recording || voiceStarting.current || !conv) return;     // one at a time, also while the mic opens
     const r = new VoiceRecorder();
+    voiceStarting.current = r; setVoiceOpening(true);
     try {
-      await r.start(() => { void finishVoice(true); });
-      recorder.current = r; setRecSeconds(0); setRecording(true);
-    } catch { showToast('Allow microphone access to record a voice note.'); }
+      // The auto-stop belongs to this recorder only: it never touches a later one.
+      await r.start(() => { if (recorder.current === r) void finishVoice(true); else r.cancel(); });
+    } catch {
+      if (voiceStarting.current === r) { voiceStarting.current = null; setVoiceOpening(false); }
+      showToast('Allow microphone access to record a voice note.');
+      return;
+    }
+    if (voiceStarting.current !== r || !alive.current) { r.cancel(); return; }   // left the chat meanwhile
+    voiceStarting.current = null; setVoiceOpening(false);
+    recorder.current = r; setRecSeconds(0); setRecording(true);
   }
   async function finishVoice(send: boolean) {
     const r = recorder.current;
@@ -576,7 +587,7 @@ export function Chat() {
                   enterKeyHint="send" autoComplete="off"
                   onChange={(e) => onType(e.target.value)} onKeyDown={onKey} />
         {!text.trim() && !editing && voiceSupported() ? (
-          <button className="send-btn" aria-label="Record a voice note" disabled={!conv} onClick={() => void startVoice()}>
+          <button className="send-btn" aria-label="Record a voice note" disabled={!conv || voiceOpening} onClick={() => void startVoice()}>
             <Icon name="mic" size={20} />
           </button>
         ) : (

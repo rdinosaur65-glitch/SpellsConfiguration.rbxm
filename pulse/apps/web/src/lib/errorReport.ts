@@ -1,4 +1,3 @@
-import { isNetworkFailure } from '@pulse/domain';
 import { rpc, supabase } from './supabase';
 
 /**
@@ -15,7 +14,8 @@ const IGNORE = /ResizeObserver loop|Script error\.?$|AbortError|The user aborted
 export function reportError(err: unknown, where: string): void {
   try {
     const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : (JSON.stringify(err) ?? 'unknown').slice(0, 200));
-    if (!e.message || IGNORE.test(e.message) || isNetworkFailure(e, navigator.onLine !== false)) return;
+    // TypeErrors are real crashes and are kept; only fetch failures (by wording) and offline are skipped.
+    if (!e.message || IGNORE.test(e.message) || navigator.onLine === false) return;
     const key = `${where}:${e.message.slice(0, 120)}`;
     if (seen.has(key) || sent >= 10) return;
     seen.add(key); sent++;

@@ -62,6 +62,10 @@ test('owner panel: a report leads to a suspension, which takes effect at once an
                                  where p.username = '${uu}' and e.message like '%boom from a test phone%'`)).toBe('1');
   await o.reload();
   await expect(o.getByTestId('error-row').filter({ hasText: 'boom from a test phone' }).filter({ hasText: `@${uu}` })).toHaveCount(1);
+  // The commonest real crash, a TypeError, is reported too.
+  await u.evaluate(() => { setTimeout(() => { (null as unknown as { x: { y: number } }).x.y = 1; }, 0); });
+  await expect.poll(() => sql(`select count(*) from private.client_errors e join public.profiles p on p.id = e.user_id
+                                 where p.username = '${uu}' and e.message like '%null%'`)).toBe('1');
 
   // Non-owners cannot open the panel.
   await r.goto('/admin');

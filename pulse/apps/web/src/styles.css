@@ -278,3 +278,5 @@ a.sheet-item { display: flex; align-items: center; justify-content: center; text
 .shutter.recording { border-color: var(--danger); box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 45%, transparent); transform: scale(1.08); }
 .rec-pill { position: absolute; top: calc(64px + var(--safe-top)); left: 50%; transform: translateX(-50%); z-index: 2; color: #fff; background: rgb(220 38 38 / .85); }
 .shutter { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.snap-sound { position: absolute; left: 50%; bottom: calc(96px + var(--safe-bottom)); transform: translateX(-50%); z-index: 3; }
+.snap-save-error { position: absolute; bottom: calc(140px + var(--safe-bottom)); left: 16px; right: 16px; text-align: center; }

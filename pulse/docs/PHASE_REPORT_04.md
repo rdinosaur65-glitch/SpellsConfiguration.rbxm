@@ -153,6 +153,21 @@ sound; the viewer closes when the video ends, and the server's viewing session l
 the clip's length (replay rules as for photos). WebM (VP9/VP8 + Opus) or MP4 on iPhone,
 about 1.5 Mbit/s so a 10-second clip is ~2 MB. Tests: e2e `video-snap.spec.ts`.
 
+## 4b2d. Review of reactions, search, error reports, voice notes and video Snaps
+An independent review confirmed 6 problems (1 high) and listed 5 lower ones; all fixed:
+- **High:** tapping the mic twice while it opened, or leaving the chat then, left the
+  microphone running, and the leftover recording could send itself after 2 minutes → one
+  recording at a time, cancelled if the chat is left, auto-stop bound to its own recording.
+- Video Snaps: letting go while the mic opened still recorded 15 s; leaving the app
+  mid-recording kept recording sound; on iPhone videos played muted with no way to unmute →
+  fixed ("Tap for sound" when the browser refuses sound), recording discarded when hidden.
+- Error reports skipped TypeErrors (the commonest crash) → now reported.
+- Removed reactions could reappear; overlapping taps could leave one behind; long chats
+  could miss recent reactions → pending changes win, the server's answer is final, newest first.
+- Lower: countdown showing "Infinity" for WebM clips; saved video Snaps named .webm even
+  when MP4; videos now recorded as MP4/H.264 where possible so they play on every phone.
+Regression tests (e2e voice, video-snap, owner) failed on the old code.
+
 ## 4b3. Push review fixes, app error reports
 An independent review of push notifications confirmed 5 problems (2 high), all fixed in 0030
 with regression tests that failed before the fix: a malformed notification setting could jam

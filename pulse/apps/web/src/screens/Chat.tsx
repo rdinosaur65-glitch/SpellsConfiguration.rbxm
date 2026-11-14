@@ -122,7 +122,7 @@ export function Chat() {
     const rows = ((msgs.data ?? []) as Message[]).reverse();
     setConv(c.data as typeof conv);
     setPeople(ppl);
-    setHasOlder(rows.length === PAGE);
+    if (initial) setHasOlder(rows.length === PAGE);
     void loadSnaps();
     setMessages((prev) => {
       const oldest = rows[0]?.created_at ?? '';
@@ -141,6 +141,30 @@ export function Chat() {
     });
     markRead();
   }, [convId, markRead, loadSnaps]);
+
+  /** Older history, one page at a time, keeping the reader's place in the list. */
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadOlder = useCallback(async () => {
+    const list = messagesRef.current;
+    const oldest = list?.find((m) => !m.local)?.created_at;
+    if (!oldest || loadingOlder) return;
+    setLoadingOlder(true);
+    const el = listRef.current;
+    const before = el ? el.scrollHeight - el.scrollTop : 0;
+    try {
+      const { data, error: err } = await supabase.from('messages').select(COLS).eq('conversation_id', convId)
+        .lt('created_at', oldest).order('created_at', { ascending: false }).limit(PAGE);
+      if (err) throw err;
+      const older = ((data ?? []) as Message[]).reverse();
+      setHasOlder(older.length === PAGE);
+      setMessages((prev) => {
+        const have = new Set((prev ?? []).map((m) => m.id));
+        return [...older.filter((m) => !have.has(m.id)), ...(prev ?? [])];
+      });
+      requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - before; });
+    } catch (e) { showToast(errorMessage(e)); }
+    finally { setLoadingOlder(false); }
+  }, [convId, loadingOlder, showToast]);
 
   // Results of queued sends (also when the Shell flushes the queue after reconnecting).
   useEffect(() => onOutbox((e) => {
@@ -335,6 +359,12 @@ export function Chat() {
       {conv && <div className="chat-notice"><Icon name="lock" size={14} />{EXPIRY_TEXT[conv.expiry_mode]}</div>}
       {error && <div style={{ padding: '0 16px' }}><Banner>{error}</Banner></div>}
       <div className="messages" ref={listRef} onScroll={onScroll} aria-live="polite" data-testid="messages">
+        {hasOlder && messages && messages.length > 0 && (
+          <button className="link-btn small" style={{ alignSelf: 'center', margin: '8px 0' }} disabled={loadingOlder}
+                  onClick={() => { stick.current = false; void loadOlder(); }}>
+            {loadingOlder ? 'Loading…' : 'Load earlier messages'}
+          </button>
+        )}
         {messages === null ? <div className="center"><Spinner /></div> : messages.length === 0 && !error ? (
           <p className="muted small" style={{ textAlign: 'center', marginTop: 40 }}>Say hi 👋</p>
         ) : messages.map((m, i) => {

@@ -23,6 +23,18 @@ export async function linkFromEmail(to: string, subject: RegExp): Promise<string
   throw new Error(`no email "${subject}" for ${to}`);
 }
 
+/** Wait for an email to `to` whose subject matches and that arrived after `afterMs`; return its text. */
+export async function emailText(to: string, subject: RegExp, afterMs = 0): Promise<string> {
+  for (let i = 0; i < 40; i++) {
+    const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
+    const list = (await res.json()) as { messages: Array<{ ID: string; Subject: string; Created: string }> };
+    const msg = list.messages.find((m) => subject.test(m.Subject) && Date.parse(m.Created) >= afterMs);
+    if (msg) return ((await (await fetch(`${MAILPIT}/api/v1/message/${msg.ID}`)).json()) as { Text: string }).Text;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`no email "${subject}" for ${to}`);
+}
+
 export async function hasEmail(to: string, subject: RegExp): Promise<boolean> {
   for (let i = 0; i < 20; i++) {
     const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);

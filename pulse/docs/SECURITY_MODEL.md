@@ -51,7 +51,10 @@ immediately, not when its JWT expires. Its own state is readable only through
   (`user_not_found`) and a blocked person's pending request reads "declined". A blocked
   person can still infer the block, because their direct chat with the blocker disappears.
 - Blocks: the blocked person loses the direct chat entirely (history, roster, settings,
-  read receipts, topic, Snaps, live Snap sessions). In groups, each side stops seeing the
+  read receipts, topic, Snaps, live Snap sessions). The person who blocked keeps it in their
+  list, marked "Blocked", with an × that erases it for good (`delete_blocked_chat`, 0022):
+  every message, receipt, reaction, save, Snap delivery and its media, for both people.
+  Only the blocker can do this; report evidence snapshots are kept. In groups, each side stops seeing the
   other's messages, reactions and receipts and they are left out of the roster.
 - Ending a friendship makes the direct chat read-only (no messages, reactions, typing).
 - Co-members cannot read each other's member rows (pins, mutes, wallpaper, last read),
@@ -85,6 +88,26 @@ immediately, not when its JWT expires. Its own state is readable only through
   state, aggregate usage, audit log. No owner bypass exists in chat, Snap, Memories,
   Vault or location policies. Every privileged action writes `private.audit_log`,
   which is append-only by trigger.
+- Resetting another user's two-step verification (lost phone) is a two-factor action for the
+  owner (migration 0021 + the `owner-mfa-reset` Edge Function, which alone holds the service
+  role and the SMTP password):
+  1. A password sign-in within the last 10 minutes (plus the owner's own 2FA code when they
+     have 2FA), a reason, and rate limits (5 requests an hour, 20 a day).
+  2. The database generates a fresh six-digit code from the OS CSPRNG (pgcrypto, rejection
+     sampling), stores only `sha256(request id ‖ code)`, and hands the code to the function,
+     which emails it to the owner's **verified** address only. Neither the code nor the
+     address ever reaches the browser.
+  3. Delivery failure marks the request failed; it can never be completed and there is no
+     other path. Mail sent from the owner's own mailbox is refused (it would reveal the owner).
+  4. The code is bound to that request (and so to one target), works once, expires after
+     5 minutes, and locks the request after 5 wrong tries; a new request cancels the old one.
+  5. Only a verified request is carried out (within 2 minutes, by the function): the
+     target's factors are removed and all their sessions revoked; their password is
+     unchanged. They are emailed a notice that names "the PULSE administrator", not the owner.
+  Every step — requested, code sent, wrong code, expired, locked, email failed, verified,
+  completed, user notified — is in the audit log. Tests: `77_owner_mfa_reset.sql`,
+  `functions.test.mjs` (real email via the local mail catcher, including a mail-server
+  outage), e2e `owner.spec.ts`.
 
 ## Private Vault (design — implemented in Phase 4)
 - Vault media is encrypted on the device before storage or backup: AES-256-GCM with a

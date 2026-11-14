@@ -46,7 +46,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Optional 2FA (TOTP) — app + **server-side enforcement** | ✅ | 0013, test 90 (every admin + direct-auth RPC), e2e enrol, sign-in, and account deletion with 2FA |
 | Security alert emails (password, email, 2FA changes) | ✅ | Supabase Auth notifications; e2e checks two of them |
 | Session list & remote sign-out | ✅ | e2e across two devices |
-| Lost authenticator: owner-assisted 2FA reset (aal2, audited, password still needed) | ✅ | 0019, tests 76, 90 |
+| Lost authenticator: owner-assisted 2FA reset — code emailed to the owner, 5 min, single use, 5 tries, audited, target notified | ✅ | 0021, owner-mfa-reset, tests 77, 90, functions.test.mjs, e2e owner |
 | Appearance settings synced across devices | ✅ | e2e |
 | Web app shell, navigation, design system, dark/light | ✅ | |
 | PWA manifest, service worker, offline shell, update prompt | ✅ | e2e offline reload |
@@ -61,6 +61,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Username search (partial, rate-limited, block-aware) | ✅ | UI + e2e |
 | Requests: send/accept/decline/cancel, mutual auto-accept, live updates | ✅ | UI + e2e |
 | Remove friend, block (also from requests/search), unblock list, report user | ✅ | UI; block in e2e; blocks with an existing chat tested (75) |
+| Blocked chat stays for the blocker with an × that erases it for both (messages, Snaps, media) | ✅ | 0022, test 76, e2e social |
 | Private nicknames + colours | ✅ | UI |
 | Direct & group conversations | ✅ | DB tested; direct chats and the new-group sheet in e2e |
 | Group admin UI (roles, add/remove, transfer, leave, rename, report, shared photos) | ✅ | e2e (create → roles → remove → rename → transfer → leave) |

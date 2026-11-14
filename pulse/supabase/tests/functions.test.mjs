@@ -175,3 +175,99 @@ test('storage-janitor removes released objects (direct call and via pg_cron/pg_n
     assert.equal(sql('select private.invoke_storage_janitor() is null'), 't', 'no call when there is nothing to delete');
   }
 });
+
+// ---------------------------------------------------------------------------
+// Owner-verified 2FA reset (owner-mfa-reset + migration 0021), with real email.
+// ---------------------------------------------------------------------------
+const MAILPIT = process.env.MAILPIT_URL ?? 'http://127.0.0.1:54324';
+async function mailTo(address, subject, { after = 0 } = {}) {
+  for (let i = 0; i < 40; i++) {
+    const list = await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}`)).json();
+    const m = list.messages.find((x) => subject.test(x.Subject) && new Date(x.Created).getTime() >= after);
+    if (m) return (await (await fetch(`${MAILPIT}/api/v1/message/${m.ID}`)).json());
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+const resetFn = (token, body) => call('/functions/v1/owner-mfa-reset', { token, body });
+const emailOf = (id) => sql(`select email from auth.users where id = '${id}'`);
+
+test('2FA reset of another account needs the code emailed to the owner', async () => {
+  const owner = await newUser('mfo'), target = await newUser('mft'), other = await newUser('mfx');
+  sql(`update private.platform_config set owner_user_id = '${owner.id}'`);
+  try {
+    sql(`insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+         values (gen_random_uuid(), '${target.id}', 'phone', 'totp', 'verified', now(), now())`);
+    const started = Date.now() - 1000;
+
+    // Only the owner, never another user.
+    assert.equal((await resetFn(other.token, { action: 'request', target_id: target.id, reason: 'x' })).status, 403);
+    assert.equal((await resetFn(undefined, { action: 'request', target_id: target.id, reason: 'x' })).status, 401);
+
+    const req = await resetFn(owner.token, { action: 'request', target_id: target.id, reason: 'lost phone' });
+    assert.equal(req.status, 200, JSON.stringify(req.data));
+    assert.equal(Object.keys(req.data).sort().join(','), 'expires_in,request_id', 'no code or address in the response');
+    const mail = await mailTo(emailOf(owner.id), /confirm a two-step verification reset/i, { after: started });
+    assert.ok(mail, 'code emailed to the owner');
+    assert.equal(await mailTo(emailOf(target.id), /confirm a two-step/i, { after: started }), null, 'never to the target');
+    const code = /Confirmation code: (\d{6})/.exec(mail.Text)?.[1];
+    assert.match(code ?? '', /^\d{6}$/);
+
+    // Wrong code, then the right one; replay refused; target reset and signed out.
+    const wrong = await resetFn(owner.token, { action: 'confirm', request_id: req.data.request_id, code: code === '000000' ? '111111' : '000000' });
+    assert.equal(wrong.data.status, 'incorrect');
+    assert.equal(wrong.data.attempts_left, 4);
+    assert.equal(sql(`select count(*) from auth.mfa_factors where user_id = '${target.id}'`), '1', 'unchanged until verified');
+    const ok = await resetFn(owner.token, { action: 'confirm', request_id: req.data.request_id, code });
+    assert.equal(ok.status, 200, JSON.stringify(ok.data));
+    assert.equal(ok.data.status, 'completed');
+    assert.equal(ok.data.notified, true);
+    assert.equal(sql(`select count(*) from auth.mfa_factors where user_id = '${target.id}'`), '0', 'target 2FA removed');
+    assert.equal(sql(`select count(*) from auth.sessions where user_id = '${target.id}'`), '0', 'target signed out');
+    const replay = await resetFn(owner.token, { action: 'confirm', request_id: req.data.request_id, code });
+    assert.equal(replay.data.status, 'used', 'a code works once');
+
+    // The affected user is told, without the owner's address.
+    const notice = await mailTo(emailOf(target.id), /two-step verification was reset/i, { after: started });
+    assert.ok(notice, 'target notified');
+    assert.ok(!notice.Text.includes(emailOf(owner.id)) && !JSON.stringify(notice.From).includes(emailOf(owner.id)),
+      'notice does not reveal the owner email');
+    assert.equal(sql(`select count(*) from private.audit_log where target_user_id = '${target.id}' and action in
+      ('account.mfa_reset.requested','account.mfa_reset.code_sent','account.mfa_reset.code_incorrect',
+       'account.mfa_reset.verified','account.mfa_reset.completed','account.mfa_reset.user_notified')`), '6', 'fully audited');
+
+    // Email delivery failure: no code, no reset, no bypass.
+    sql(`insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+         values (gen_random_uuid(), '${other.id}', 'phone', 'totp', 'verified', now(), now())`);
+    execFileSync('docker', ['stop', 'supabase_inbucket_pulse'], { stdio: 'ignore' });
+    let failed;
+    try { failed = await resetFn(owner.token, { action: 'request', target_id: other.id, reason: 'smtp down' }); }
+    finally { execFileSync('docker', ['start', 'supabase_inbucket_pulse'], { stdio: 'ignore' }); }
+    assert.equal(failed.status, 502);
+    assert.equal(failed.data.error, 'email_failed');
+    assert.equal(sql(`select status from private.mfa_reset_requests where target_id = '${other.id}' order by created_at desc limit 1`), 'failed');
+    const reqId = sql(`select id from private.mfa_reset_requests where target_id = '${other.id}' order by created_at desc limit 1`);
+    for (const guess of ['000000', '123456']) {
+      const r = await resetFn(owner.token, { action: 'confirm', request_id: reqId, code: guess });
+      assert.equal(r.data.status, 'failed');
+    }
+    assert.equal(sql(`select count(*) from auth.mfa_factors where user_id = '${other.id}'`), '1', 'nothing reset after a delivery failure');
+
+    // Mail sent from the owner's own mailbox would reveal the owner to the affected user:
+    // refused before anything is sent. (The local functions .env sends from no-reply@pulse.local.)
+    const ownerEmail = emailOf(owner.id);
+    const sender = 'no-reply@pulse.local';
+    sql(`update auth.users set email = '${sender}' where id = '${owner.id}'`);
+    let same;
+    const t0 = Date.now() - 1000;
+    try { same = await resetFn(owner.token, { action: 'request', target_id: other.id, reason: 'sender check' }); }
+    finally { sql(`update auth.users set email = '${ownerEmail}' where id = '${owner.id}'`); }
+    assert.equal(same.status, 409, JSON.stringify(same.data));
+    assert.equal(same.data.error, 'smtp_sender_is_owner');
+    assert.equal(sql(`select status from private.mfa_reset_requests where target_id = '${other.id}' order by created_at desc limit 1`), 'failed');
+    assert.equal(await mailTo(sender, /confirm a two-step/i, { after: t0 }), null, 'no code sent');
+    assert.equal(sql(`select count(*) from auth.mfa_factors where user_id = '${other.id}'`), '1', 'nothing reset');
+  } finally {
+    sql('update private.platform_config set owner_user_id = null');
+  }
+});

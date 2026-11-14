@@ -66,7 +66,9 @@ begin
                       'admin_set_account_state');
   perform test.throws(format($q$select public.admin_delete_account(%L, 'x')$q$, v), 'mfa_required', 'admin_delete_account');
   perform test.throws('select * from public.admin_audit_log()', 'mfa_required', 'admin_audit_log');
-  perform test.throws(format($q$select public.admin_reset_mfa(%L, 'x')$q$, v), 'mfa_required', 'admin_reset_mfa');
+  perform test.throws(format($q$select public.admin_mfa_reset_request(%L, 'x')$q$, v), 'mfa_required', 'admin_mfa_reset_request');
+  perform test.throws(format($q$select public.admin_mfa_reset_confirm(%L, '123456')$q$, gen_random_uuid()), 'mfa_required',
+                      'admin_mfa_reset_confirm');
   perform test.as_user(u, '{"aal":"aal2"}');
   perform test.ok((public.admin_usage_summary() ->> 'accounts') is not null, 'owner at aal2 can administer');
   perform test.as_superuser();

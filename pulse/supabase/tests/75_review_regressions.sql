@@ -472,3 +472,23 @@ begin
                       'friend requests: 30 per hour');
   perform test.as_superuser();
 end $$;
+
+-- The largest file PULSE accepts can always be downloaded once a day (0023).
+do $$
+declare u uuid; big uuid; small uuid;
+begin
+  update private.platform_config set daily_egress_user_bytes = 41943040;   -- the shipped default
+  u := test.new_user('egbig_75');
+  big := test.upload(u, 'vault_backup', 'application/octet-stream', 50 * 1048576);
+  small := test.upload(u, 'chat', 'image/jpeg', 1000);
+  perform test.as_user(u);
+  perform public.authorize_media_access(big);
+  perform test.as_superuser();
+  perform test.ok((select egress_bytes from private.usage_daily where user_id = u) = 50 * 1048576,
+                  'a 50 MB backup downloads on a fresh day');
+  perform test.as_user(u);
+  perform test.throws(format('select public.authorize_media_access(%L)', small), 'egress_quota_exceeded',
+                      'the share applies after that');
+  perform test.as_superuser();
+  update private.platform_config set daily_egress_user_bytes = 67108864;
+end $$;

@@ -7,6 +7,7 @@ import { relativeTime } from '../lib/time';
 import type { AccountState } from '../lib/types';
 import { Banner, Button, Header, Icon, Spinner, useToast } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { ResetMfaSheet } from '../components/ResetMfa';
 
 /**
  * Owner panel. Everything here goes through admin_* RPCs that re-check ownership (and
@@ -43,7 +44,8 @@ const askReason = (what: string) => {
 };
 
 export function Admin() {
-  const { isOwner } = useAuth();
+  const { isOwner, session } = useAuth();
+  const [resetFor, setResetFor] = useState<{ id: string; username: string } | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [reports, setReports] = useState<Report[] | null>(null);
   const [status, setStatus] = useState<'open' | 'actioned' | 'dismissed'>('open');
@@ -165,11 +167,7 @@ export function Admin() {
                 <span className="list-title truncate" style={{ display: 'block' }}>{u.display_name} <span className="muted small">@{u.username}</span></span>
                 <span className="list-sub">{u.account_state}{u.open_reports ? ` · ${u.open_reports} open report${u.open_reports > 1 ? 's' : ''}` : ''} · joined {relativeTime(u.created_at)}</span>
               </span>
-              <Button className="btn btn-ghost btn-sm" busy={busy === `${u.id}:mfa`} onClick={() => {
-                if (!confirm(`Reset two-step verification for @${u.username}? Only do this after confirming it is really them (e.g. a call). Their password is still needed.`)) return;
-                const reason = askReason(`resetting 2FA for @${u.username}`);
-                if (reason) void act(`${u.id}:mfa`, () => rpc('admin_reset_mfa', { p_user: u.id, p_reason: reason }), 'Two-step verification reset');
-              }}>Reset 2FA</Button>
+              <Button className="btn btn-ghost btn-sm" onClick={() => setResetFor({ id: u.id, username: u.username })}>Reset 2FA</Button>
               {u.account_state === 'active' && <>
                 <Button className="btn btn-ghost btn-sm" busy={busy === `${u.id}:suspended`} onClick={() => setState(u.id, 'suspended', `suspending @${u.username}`)}>Suspend</Button>
                 <Button className="btn btn-danger btn-sm" busy={busy === `${u.id}:banned`} onClick={() => setState(u.id, 'banned', `banning @${u.username}`)}>Ban</Button>
@@ -193,6 +191,10 @@ export function Admin() {
             {typeof a.details?.reason === 'string' ? <span className="muted"> · {a.details.reason as string}</span> : null}</div>
         ))}
       </Card>
+      {resetFor && session?.user.email && (
+        <ResetMfaSheet email={session.user.email} target={resetFor} onClose={() => setResetFor(null)}
+          onDone={(msg) => { setResetFor(null); showToast(msg); void load(); }} />
+      )}
       {toast}
     </div>
   );

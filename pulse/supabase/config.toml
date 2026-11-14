@@ -449,3 +449,6 @@ verify_jwt = true
 
 [functions.storage-janitor]
 verify_jwt = false
+
+[functions.owner-mfa-reset]
+verify_jwt = true

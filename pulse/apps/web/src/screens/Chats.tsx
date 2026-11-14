@@ -24,6 +24,16 @@ export function Chats() {
   const [menuFor, setMenuFor] = useState<ChatListItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [toast, showToast] = useToast();
+  const [erasing, setErasing] = useState<string | null>(null);
+
+  async function erase(c: ChatListItem, title: string) {
+    if (erasing) return;
+    if (!window.confirm(`Delete your chat with ${title} for good? Every message, photo and Snap in it is erased for both of you. This cannot be undone.`)) return;
+    setErasing(c.conversation_id);
+    try { await rpc('delete_blocked_chat', { p_conv: c.conversation_id }); showToast('Chat deleted'); await reload(); }
+    catch (e) { showToast(errorMessage(e)); }
+    finally { setErasing(null); }
+  }
 
   const visible = useMemo(() => (items ?? []).filter((c) =>
     folder === 'all' ? true : folder === 'private' ? c.kind === 'direct' : folder === 'groups' ? c.kind === 'group' : c.unread), [items, folder]);
@@ -48,6 +58,21 @@ export function Chats() {
           <div className="list">
             {visible.map((c) => {
               const title = c.title ?? 'Chat';
+              if (c.blocked) {
+                return (
+                  <div key={c.conversation_id} className="row list-item" data-testid="chat-row">
+                    <Avatar name={title} />
+                    <span className="grow">
+                      <span className="list-title truncate" style={{ display: 'block' }}>{title}</span>
+                      <span className="list-sub label-quiet"><span className="label-dot" />Blocked</span>
+                    </span>
+                    <Button variant="ghost" className="icon-btn" aria-label={`Delete chat with ${title}`}
+                      busy={erasing === c.conversation_id} onClick={() => void erase(c, title)}>
+                      <Icon name="close" size={20} />
+                    </Button>
+                  </div>
+                );
+              }
               return (
                 <div key={c.conversation_id} className="row" data-testid="chat-row">
                   <Link to={`/chats/${c.conversation_id}`} className="list-item grow" aria-label={`${title}: ${c.label}`}>

@@ -168,26 +168,6 @@ begin
   perform test.as_superuser();
 end $$;
 
--- Owner-assisted 2FA reset (0019).
-do $$
-declare o uuid; u uuid; x uuid;
-begin
-  o := test.new_user('own_mfa_76'); u := test.new_user('lost_76'); x := test.new_user('other_76');
-  update private.platform_config set owner_user_id = o;
-  insert into auth.mfa_factors (id, user_id, factor_type, status, created_at, updated_at)
-  values (gen_random_uuid(), u, 'totp', 'verified', now(), now());
-  insert into auth.sessions (id, user_id) values (gen_random_uuid(), u);
-  perform test.as_user(x);
-  perform test.throws(format($q$select public.admin_reset_mfa(%L, 'x')$q$, u), 'forbidden', 'owner only');
-  perform test.as_user(o);
-  perform test.throws(format($q$select public.admin_reset_mfa(%L, '')$q$, u), 'reason_required', 'reason required');
-  perform test.ok(public.admin_reset_mfa(u, 'verified by phone call') = 1, 'factor removed');
-  perform test.as_superuser();
-  perform test.ok(not exists (select 1 from auth.mfa_factors where user_id = u), 'no factors left');
-  perform test.ok(not exists (select 1 from auth.sessions where user_id = u), 'signed out everywhere');
-  perform test.ok(exists (select 1 from private.audit_log where action = 'account.mfa_reset' and target_user_id = u), 'audited');
-  update private.platform_config set owner_user_id = null;
-end $$;
 
 -- Reports are de-duplicated and guarded; reads can name exact messages (0020).
 do $$
@@ -215,4 +195,46 @@ begin
   perform test.throws(format($q$select public.report_message(%L, 'spam')$q$, m2), 'storage_full', 'reports stop at the database guard');
   perform test.as_superuser();
   perform private.refresh_db_usage();
+end $$;
+
+-- Blocked chats stay listed for the blocker, who can erase them (0022).
+do $$
+declare a uuid; b uuid; c uuid; conv uuid; conv_bc uuid; m uuid; pic uuid; snap uuid; snap2 uuid; img uuid; img2 uuid;
+begin
+  a := test.new_user('blk2_a_76'); b := test.new_user('blk2_b_76'); c := test.new_user('blk2_c_76');
+  perform test.befriend(a, b); perform test.befriend(a, c); perform test.befriend(b, c);
+  pic := test.upload(b, 'chat', 'image/jpeg', 900);
+  img := test.upload(b, 'snap', 'image/jpeg', 700);
+  img2 := test.upload(b, 'snap', 'image/jpeg', 600);
+  perform test.as_user(b);
+  conv := public.create_direct_conversation(a);
+  conv_bc := public.create_direct_conversation(c);
+  perform public.set_chat_expiry(conv, 'never');
+  m := public.send_message(conv, 'photo', null, gen_random_uuid(), pic);
+  perform public.send_message(conv, 'text', 'hello', gen_random_uuid());
+  snap := public.send_snap(img, array[a], null, 5::smallint, false, gen_random_uuid());        -- only to a
+  snap2 := public.send_snap(img2, array[a, c], null, 5::smallint, false, gen_random_uuid());   -- to a and c
+  perform test.as_user(a);
+  perform public.block_user(b);
+  perform test.ok((select blocked and label = 'Blocked' and not unread from public.chat_list() where conversation_id = conv),
+                  'blocker still sees the chat, marked blocked (and never unread)');
+  perform test.as_user(b);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'blocked person does not');
+  perform test.throws(format('select public.delete_blocked_chat(%L)', conv), 'not_allowed', 'only the blocker can erase');
+  perform test.as_user(c);
+  perform test.throws(format('select public.delete_blocked_chat(%L)', conv), 'not_a_member', 'outsiders cannot');
+  perform test.as_user(a);
+  perform public.delete_blocked_chat(conv);
+  perform test.as_superuser();
+  perform test.ok(not exists (select 1 from public.conversations where id = conv), 'chat erased');
+  perform test.ok(not exists (select 1 from public.messages where conversation_id = conv), 'messages erased');
+  perform test.ok((select status from public.media_assets where id = pic) = 'deleting', 'media released');
+  perform test.ok(not exists (select 1 from public.snaps where id = snap), 'Snap sent only in that chat erased');
+  perform test.ok((select status from public.media_assets where id = img) = 'deleting', 'its media released');
+  perform test.ok(exists (select 1 from public.snap_recipients where snap_id = snap2 and recipient_id = c),
+                  'a Snap also sent to someone else stays for them');
+  perform test.ok((select status from public.media_assets where id = img2) = 'uploaded', 'and keeps its media');
+  perform test.ok(exists (select 1 from public.conversations where id = conv_bc), 'other chats untouched');
+  perform test.as_user(a);
+  perform test.ok(not exists (select 1 from public.chat_list() where conversation_id = conv), 'gone from the list');
 end $$;

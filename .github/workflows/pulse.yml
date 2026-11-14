@@ -47,7 +47,12 @@ jobs:
       - run: npm run sb:start
       - name: Serve the Edge Functions (throwaway local secret)
         run: |
-          printf 'JANITOR_SECRET=%s\n' "$(openssl rand -hex 24)" > supabase/functions/.env
+          {
+            printf 'JANITOR_SECRET=%s\n' "$(openssl rand -hex 24)"
+            # Mail goes to the stack's own Mailpit (no external service, nothing sent out).
+            printf 'PULSE_SMTP_HOST=inbucket\nPULSE_SMTP_PORT=1025\nPULSE_SMTP_TLS=none\n'
+            printf 'PULSE_SMTP_FROM=no-reply@pulse.local\nPULSE_SMTP_FROM_NAME=PULSE\n'
+          } > supabase/functions/.env
           nohup npx supabase functions serve --env-file supabase/functions/.env > /tmp/functions.log 2>&1 &
           for i in $(seq 1 60); do
             [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:54321/functions/v1/storage-janitor)" = 401 ] && exit 0

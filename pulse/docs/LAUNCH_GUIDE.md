@@ -61,11 +61,24 @@ Follow the list in `docs/ENVIRONMENT.md` → "Supabase Auth settings". In short:
 3. Put the **site key** in Cloudflare Pages as `VITE_TURNSTILE_SITE_KEY` (step 6).
    Do 2 and 3 together: captcha on without the site key means nobody can sign in.
 
-## 5. Media functions (photos and Snaps)
+## 5. Edge Functions (photos, Snaps, owner 2FA resets)
 ```sh
-npx supabase functions deploy media-url storage-janitor
+npx supabase functions deploy media-url storage-janitor owner-mfa-reset
 npx supabase secrets set JANITOR_SECRET=<a long random string>
 ```
+The owner-mfa-reset function emails you a confirmation code whenever you reset someone's
+two-step verification, and then tells that person it happened. It sends through the same
+free Gmail account as step 2 (Supabase blocks outgoing ports 25 and 587, so use port 465):
+```sh
+npx supabase secrets set PULSE_SMTP_HOST=smtp.gmail.com PULSE_SMTP_PORT=465 PULSE_SMTP_TLS=implicit \
+  PULSE_SMTP_USER=<the PULSE Gmail address> PULSE_SMTP_PASS=<its app password> \
+  PULSE_SMTP_FROM=<the PULSE Gmail address> PULSE_SMTP_FROM_NAME=PULSE
+```
+Use a mailbox that is **not** the address of your own PULSE account: the notice goes to the
+person being reset, so it must not come from you. The function refuses to run if the sender
+is your own address. The code itself goes to the email address of your owner account, and
+the reset does not happen unless that email is delivered and you type the code within
+5 minutes.
 Then in Supabase → **SQL Editor**, run once (same random string as above):
 ```sql
 select vault.create_secret('https://<project-ref>.supabase.co/functions/v1/storage-janitor', 'pulse_janitor_url');
@@ -119,7 +132,7 @@ Share the app address. On phones, "Add to Home Screen" installs it like an app.
 - Two Free projects per Supabase account; PULSE needs one.
 - Capacity limits (PULSE enforces its own lower ceilings, see the Owner panel): database
   500 MB, files 1 GB, downloads about 5 GB a month (PULSE spends at most ~160 MB a day,
-  64 MB per person), 500,000 Edge Function calls a month (each photo or Snap view is one),
+  40 MB per person after their first download of the day), 500,000 Edge Function calls a month (each photo or Snap view is one),
   200 simultaneous live connections, 2 million realtime messages a month, 300–500 emails a
   day depending on the SMTP choice.
 - None of the services above asks for a payment card on the free plan. If any of them ever

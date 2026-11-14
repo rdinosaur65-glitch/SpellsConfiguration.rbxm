@@ -38,11 +38,13 @@ export interface ChatListItem {
   title: string | null;
   other_user_id: string | null;
   title_color: string | null;
-  label: 'Start chatting' | 'New Chat' | 'New Snap' | 'Received' | 'Opened' | 'Delivered';
+  label: 'Start chatting' | 'New Chat' | 'New Snap' | 'Received' | 'Opened' | 'Delivered' | 'Blocked';
   unread: boolean;
   last_activity: string;
   pinned_rank: number | null;
   muted: boolean;
+  /** A direct chat with someone I blocked: shown with an × that erases it for good. */
+  blocked: boolean;
 }
 
 export interface Message {

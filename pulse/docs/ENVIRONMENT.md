@@ -21,6 +21,10 @@ Nothing here costs money. Every value comes from a free account the **owner** cr
 | `VAPID_PRIVATE_KEY` | For push | Private half of the VAPID pair |
 | `VAPID_SUBJECT` | For push | `mailto:` address of the owner |
 | `TURN_API_KEY` | Optional | Open Relay API key; used to mint short-lived TURN credentials |
+| `JANITOR_SECRET` | Yes | Shared secret between the pg_cron job (Vault) and `storage-janitor` |
+| `PULSE_SMTP_HOST`, `PULSE_SMTP_PORT`, `PULSE_SMTP_TLS` | For owner 2FA resets | `smtp.gmail.com`, `465`, `implicit` (ports 25/587 are blocked for Edge Functions) |
+| `PULSE_SMTP_USER`, `PULSE_SMTP_PASS` | For owner 2FA resets | A PULSE mailbox and its app password — never the owner's own address |
+| `PULSE_SMTP_FROM`, `PULSE_SMTP_FROM_NAME` | For owner 2FA resets | Sender address (the same PULSE mailbox) and name `PULSE` |
 
 ## Database configuration (one-time SQL, run by the owner in the SQL editor)
 
@@ -72,8 +76,9 @@ itself needs no paid service.
 
 ## Edge Functions (media) — free tier: 500,000 invocations a month
 ```sh
-npx supabase functions deploy media-url storage-janitor
+npx supabase functions deploy media-url storage-janitor owner-mfa-reset
 npx supabase secrets set JANITOR_SECRET=<long random string>
+# owner-mfa-reset: see docs/LAUNCH_GUIDE.md §5 for the PULSE_SMTP_* secrets
 ```
 Then, once, in the SQL editor (Vault keeps both encrypted; the janitor job is a no-op until
 they exist, and it only calls the function when something is waiting to be deleted):
@@ -84,8 +89,15 @@ select vault.create_secret('<the same long random string>', 'pulse_janitor_secre
 `media-url` needs nothing else: it uses the project's own URL and keys, which Supabase
 injects into every function. It streams each photo/Snap itself (one authorised download
 per call), so every media view is one function invocation. Locally, `npx supabase functions serve --env-file
-supabase/functions/.env` serves both (the `.env` holds a throwaway `JANITOR_SECRET` and is
-git-ignored).
+supabase/functions/.env` serves all three. The `.env` is git-ignored and holds a throwaway
+`JANITOR_SECRET` plus the local mail catcher as SMTP server:
+```
+PULSE_SMTP_HOST=inbucket
+PULSE_SMTP_PORT=1025
+PULSE_SMTP_TLS=none
+PULSE_SMTP_FROM=no-reply@pulse.local
+PULSE_SMTP_FROM_NAME=PULSE
+```
 
 ## Local tests
 | Variable | Default | Purpose |

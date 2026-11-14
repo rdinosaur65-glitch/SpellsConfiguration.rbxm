@@ -23,6 +23,7 @@ create table auth.users (
   email text unique,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   banned_until timestamptz,
+  email_confirmed_at timestamptz,
   created_at timestamptz not null default now()
 );
 

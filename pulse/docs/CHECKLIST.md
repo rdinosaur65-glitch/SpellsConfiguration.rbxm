@@ -46,9 +46,12 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Optional 2FA (TOTP) — app + **server-side enforcement** | ✅ | 0013, test 90 (every admin + direct-auth RPC), e2e enrol, sign-in, and account deletion with 2FA |
 | Security alert emails (password, email, 2FA changes) | ✅ | Supabase Auth notifications; e2e checks two of them |
 | Session list & remote sign-out | ✅ | e2e across two devices |
+| Lost authenticator: owner-assisted 2FA reset (aal2, audited, password still needed) | ✅ | 0019, tests 76, 90 |
 | Appearance settings synced across devices | ✅ | e2e |
 | Web app shell, navigation, design system, dark/light | ✅ | |
 | PWA manifest, service worker, offline shell, update prompt | ✅ | e2e offline reload |
+| Install guidance (Android prompt, iOS Share → Add to Home Screen), iOS home-screen meta | ✅ | Settings → Install PULSE |
+| Mobile layout: safe areas, keyboard-aware height (visualViewport), auto-growing composer, sheets above the tab bar | ✅ | Screenshots at 375×667 and 360×640; real-device check still owed |
 | Google sign-in | ⛔ | Needs owner's free Google OAuth credentials |
 | Apple sign-in | ⛔ | Requires paid Apple Developer membership → not available at €0 |
 
@@ -62,6 +65,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Direct & group conversations | ✅ | DB tested; direct chats and the new-group sheet in e2e |
 | Group admin UI (roles, add/remove, transfer, leave, rename, report, shared photos) | ✅ | e2e (create → roles → remove → rename → transfer → leave) |
 | Text messages, realtime, optimistic + idempotent retry | ✅ | e2e |
+| Offline queue (in memory, per account, flushed on reconnect from any screen) | ✅ | |
+| Long chats: load earlier messages | ✅ | e2e (230 messages) |
 | Chat list with status labels, no previews; folders; pins; mute | ✅ | e2e (labels) |
 | Read status & disappearing modes (after view / 24 h / 7 d / never) | ✅ | e2e: mode switch announced in chat, Delivered → Opened live; mode fixed per message (75) |
 | Edit (15 min), delete tombstones, reply, save | ✅ | edit in e2e |

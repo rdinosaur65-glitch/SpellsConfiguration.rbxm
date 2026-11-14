@@ -262,6 +262,15 @@ export function Chat() {
     stick.current = atBottom;
   }
 
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  // Grow the message box with its content (up to the CSS max-height), shrink when sent.
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }, [text]);
+
   function onType(v: string) {
     setText(v);
     if (settings?.show_typing !== false && v && Date.now() - lastTypingSent.current > 2500 && bcast.current) {
@@ -272,7 +281,7 @@ export function Chat() {
 
   async function submit() {
     const body = text.trim();
-    if (!body) return;
+    if (!body || !conv) return;   // still loading: keep the text, the user can send in a moment
     if (editing) {
       const target = editing;
       setEditing(null); setText('');
@@ -413,8 +422,9 @@ export function Chat() {
         </button>
         <input ref={fileRef} type="file" accept="image/*" hidden data-testid="photo-input"
                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void sendPhoto(f); }} />
-        <textarea rows={1} aria-label="Message" placeholder="Message" value={text} maxLength={LIMITS.messageMaxChars}
-                  onChange={(e) => onType(e.target.value)} onKeyDown={onKey} disabled={!conv} />
+        <textarea ref={composerRef} rows={1} aria-label="Message" placeholder="Message" value={text} maxLength={LIMITS.messageMaxChars}
+                  enterKeyHint="send" autoComplete="off"
+                  onChange={(e) => onType(e.target.value)} onKeyDown={onKey} />
         <button className="send-btn" aria-label={editing ? 'Save edit' : 'Send'} disabled={!text.trim() || !conv} onClick={() => void submit()}>
           <Icon name={editing ? 'check' : 'send'} size={20} />
         </button>

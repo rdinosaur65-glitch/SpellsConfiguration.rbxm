@@ -10,6 +10,7 @@ import { Avatar, Banner, Button, Field, Header, Spinner, Toggle, useToast } from
 import { useAuth } from '../lib/auth';
 import { setStepUp } from '../lib/stepup';
 import { Captcha, captchaEnabled } from '../components/Captcha';
+import { isIos, isStandalone, useInstall } from '../lib/install';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (<><h2 className="section-title">{title}</h2><div className="card">{children}</div></>);
@@ -75,6 +76,7 @@ export function Settings() {
         <Toggle label="Data saver" description="Load media only when you tap it." checked={settings.data_saver} onChange={(v) => save({ data_saver: v })} />
       </Section>
 
+      <InstallCard />
       <SecuritySection onToast={showToast} email={session?.user.email ?? ''} />
       <BlockedSection onToast={showToast} />
       <SessionsSection onToast={showToast} />
@@ -216,12 +218,13 @@ function SecuritySection({ onToast, email }: { onToast: (m: string) => void; ema
         {error && <Banner>{error}</Banner>}
         <div className="row"><span className="grow"><strong>Two-step verification</strong><br />
           <span className="muted small">{factorsError ? 'Couldn’t check right now.' : factors === null ? 'Checking…'
-            : verified.length ? 'On — codes from your authenticator app are required to sign in.' : 'Off'}</span></span></div>
+            : verified.length ? 'On — codes from your authenticator app are required to sign in. Lost your phone? The PULSE owner can reset it after confirming it’s you.' : 'Off'}</span></span></div>
         {factorsError ? <Button variant="subtle" onClick={() => void load()}>Try again</Button> : factors === null ? <Spinner small /> : verified.length > 0
           ? verified.map((f) => <Button key={f.id} variant="danger" onClick={() => remove(f.id)}>Turn off</Button>)
           : enroll ? (
             <div className="stack">
-              <p className="small muted" style={{ margin: 0 }}>Scan this with an authenticator app (any free app works), then enter the 6-digit code.</p>
+              <p className="small muted" style={{ margin: 0 }}>Scan this with an authenticator app (any free app works), then enter the 6-digit code.
+                Tip: scan it on a second device too, or keep the code below somewhere safe — there are no backup codes.</p>
               <img src={enroll.qr} alt="Authenticator QR code" width={180} height={180} style={{ background: '#fff', borderRadius: 12, justifySelf: 'center' }} />
               <code className="small" style={{ wordBreak: 'break-all', textAlign: 'center' }}>{enroll.secret}</code>
               <Field label="6-digit code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
@@ -292,6 +295,26 @@ function StorageSection() {
           <div style={{ width: `${st.percent}%`, height: '100%', background: st.warning ? 'var(--warning)' : 'var(--accent)' }} />
         </div>
         <span className="muted small">Memories stay on your device. Cloud backup is optional and small, because PULSE runs on free hosting.</span>
+      </div>
+    </Section>
+  );
+}
+
+function InstallCard() {
+  const { canPrompt, prompt } = useInstall();
+  if (isStandalone()) return null;
+  return (
+    <Section title="Install PULSE">
+      <div className="card-pad install-card" data-testid="install-card">
+        <span className="small">Add PULSE to your home screen: it opens full-screen like an app and starts faster.</span>
+        {canPrompt ? <Button variant="subtle" onClick={() => void prompt()}>Install</Button>
+          : isIos() ? (
+            <ol className="small">
+              <li>Open PULSE in <strong>Safari</strong>.</li>
+              <li>Tap the <strong>Share</strong> button (square with an arrow).</li>
+              <li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
+            </ol>
+          ) : <span className="small muted">In your browser menu, choose “Install app” or “Add to Home screen”.</span>}
       </div>
     </Section>
   );

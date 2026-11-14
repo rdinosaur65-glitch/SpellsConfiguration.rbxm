@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import { useStepUpActive } from './lib/stepup';
@@ -9,12 +9,12 @@ import { AccountBlocked, ForgotPassword, NotConfigured, ResetPassword, SignIn, S
 import { MfaChallenge } from './screens/MfaChallenge';
 import { Chats } from './screens/Chats';
 import { Chat } from './screens/Chat';
-import { GroupInfo } from './screens/GroupInfo';
-import { Admin } from './screens/Admin';
-import { Privacy } from './screens/Privacy';
+const GroupInfo = lazy(() => import('./screens/GroupInfo').then((m) => ({ default: m.GroupInfo })));
+const Admin = lazy(() => import('./screens/Admin').then((m) => ({ default: m.Admin })));
+const Privacy = lazy(() => import('./screens/Privacy').then((m) => ({ default: m.Privacy })));
 import { Friends } from './screens/Friends';
-import { Settings } from './screens/Settings';
-import { Camera } from './screens/Camera';
+const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
+const Camera = lazy(() => import('./screens/Camera').then((m) => ({ default: m.Camera })));
 
 function useNeedsMfa(sessionKey: string | undefined): [boolean | null, () => void] {
   const [needs, setNeeds] = useState<boolean | null>(null);
@@ -89,6 +89,7 @@ export function App() {
 
   if (!session) {
     return (
+      <Suspense fallback={<div className="center" style={{ minHeight: '100%' }}><Spinner /></div>}>
       <Routes>
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot" element={<ForgotPassword />} />
@@ -97,6 +98,7 @@ export function App() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<Navigate to="/signin" replace state={{ from: location.pathname }} />} />
       </Routes>
+      </Suspense>
     );
   }
   if (needsMfa && !stepUp) return <MfaChallenge onDone={recheckMfa} />;

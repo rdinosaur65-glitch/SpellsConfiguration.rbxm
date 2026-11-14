@@ -24,6 +24,21 @@ export function Camera() {
   const [torch, setTorch] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false });
   const shotCanvas = useRef<HTMLCanvasElement | null>(null);
   const [sending, setSending] = useState(false);
+  const pickRef = useRef<HTMLInputElement>(null);
+
+  // Fallback when the live camera cannot run here (permission blocked, older iOS home-screen
+  // apps, desktop without a camera): take the photo with the phone's own camera app.
+  async function fromFile(file: File) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const c = document.createElement('canvas');
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext('2d')?.drawImage(bmp, 0, 0);
+      bmp.close();
+      shotCanvas.current = c;
+      setShot(c.toDataURL('image/jpeg', 0.9));
+    } catch { showToast('That photo could not be opened.'); }
+  }
   const [toast, showToast] = useToast();
 
   const stop = useCallback(() => {
@@ -97,6 +112,11 @@ export function Camera() {
             : state === 'error' ? <p>The camera couldn't start. Another app may be using it.</p>
             : <p>Point, shoot, share with friends.</p>}
           {state !== 'unsupported' && <Button busy={state === 'starting'} onClick={() => start(facing)}>Open camera</Button>}
+          {(state === 'denied' || state === 'unsupported' || state === 'error') && (
+            <Button variant="ghost" onClick={() => pickRef.current?.click()}>Use the phone's camera app</Button>
+          )}
+          <input ref={pickRef} type="file" accept="image/*" capture="environment" hidden data-testid="camera-file"
+                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void fromFile(f); }} />
           <span className="pill">Nothing is recorded until you press the shutter.</span>
         </div>
       )}

@@ -29,6 +29,7 @@ a { color: var(--accent-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3 { margin: 0; line-height: 1.2; }
 button, input, textarea, select { font: inherit; color: inherit; }
+button, a, label, input[type="checkbox"] { touch-action: manipulation; }   /* no double-tap zoom delay */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -100,7 +101,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- app shell ---------- */
-.app { display: flex; flex-direction: column; height: 100%; max-width: 640px; margin: 0 auto; }
+.app { display: flex; flex-direction: column; height: var(--app-h, 100dvh); max-width: 640px; margin: 0 auto; }
 .screen { flex: 1; overflow-y: auto; padding: 0 16px calc(var(--nav-h) + var(--safe-bottom) + 16px); }
 .screen-full { padding-bottom: 0; display: flex; flex-direction: column; overflow: hidden; }
 .topbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center;
@@ -241,3 +242,5 @@ a.sheet-item { display: flex; align-items: center; justify-content: center; text
 .legal-page ul { padding-left: 20px; margin: 0; display: grid; gap: 6px; }
 .legal-page p { margin: 6px 0; }
 .captcha { min-height: 65px; display: flex; justify-content: center; }
+.messages { overscroll-behavior: contain; }
+.install-card ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; }

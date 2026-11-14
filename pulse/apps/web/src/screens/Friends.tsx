@@ -6,7 +6,7 @@ import { relativeTime } from '../lib/time';
 import type { SearchResult } from '../lib/types';
 import { Avatar, Banner, Button, Empty, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
 import { useAuth } from '../lib/auth';
-import { useFriendRequests } from '../lib/live';
+import { useChatList, useFriendRequests } from '../lib/live';
 
 interface FriendRow { user_id: string; username: string; display_name: string; nickname: string | null; nickname_color: string | null;
   online: boolean | null; last_active_at: string | null }
@@ -18,6 +18,7 @@ const normalizeQuery = (q: string) => q.trim().toLowerCase().replace(/^@+/, '');
 export function Friends() {
   const nav = useNavigate();
   const { requests, reload: reloadRequests } = useFriendRequests();
+  const { reload: reloadChats } = useChatList();
   const [friends, setFriends] = useState<FriendRow[] | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -187,7 +188,7 @@ export function Friends() {
         )}
 
       {menuFor && <PersonMenu person={menuFor} onClose={() => setMenuFor(null)} onDone={async (msg) => {
-        setMenuFor(null); showToast(msg); await Promise.all([loadFriends(), reloadRequests()]); }} />}
+        setMenuFor(null); showToast(msg); await Promise.all([loadFriends(), reloadRequests(), reloadChats()]); }} />}
       {toast}
     </div>
   );

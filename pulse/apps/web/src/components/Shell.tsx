@@ -1,6 +1,7 @@
+import { Suspense } from 'react';
 import { NavLink, Outlet, useMatch } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { Icon } from './ui';
+import { Icon, Spinner } from './ui';
 import { useOnline } from '../lib/useOnline';
 import { LiveProvider, useChatList, useFriendRequests } from '../lib/live';
 
@@ -23,7 +24,7 @@ function ShellInner() {
   return (
     <div className="app">
       {!online && <div className="offline" role="status">You're offline. Messages you send now go out when you reconnect, as long as PULSE stays open.</div>}
-      <Outlet />
+      <Suspense fallback={<div className="center" style={{ flex: 1 }}><Spinner /></div>}><Outlet /></Suspense>
       {needRefresh && (
         <div className="update-bar" role="status">
           <span className="grow small">A new version of PULSE is ready.</span>

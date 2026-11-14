@@ -19,6 +19,8 @@ function labelClass(item: ChatListItem): string {
 export function Chats() {
   const { items, error, reload } = useChatList();
   const [folder, setFolder] = useState<Folder>('all');
+  // Re-read on every visit: some changes (a block, an unfriend) have no realtime event.
+  useEffect(() => { void reload(); }, [reload]);
   const [menuFor, setMenuFor] = useState<ChatListItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [toast, showToast] = useToast();

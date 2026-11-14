@@ -167,3 +167,24 @@ begin
                   'served view counts');
   perform test.as_superuser();
 end $$;
+
+-- Owner-assisted 2FA reset (0019).
+do $$
+declare o uuid; u uuid; x uuid;
+begin
+  o := test.new_user('own_mfa_76'); u := test.new_user('lost_76'); x := test.new_user('other_76');
+  update private.platform_config set owner_user_id = o;
+  insert into auth.mfa_factors (id, user_id, factor_type, status, created_at, updated_at)
+  values (gen_random_uuid(), u, 'totp', 'verified', now(), now());
+  insert into auth.sessions (id, user_id) values (gen_random_uuid(), u);
+  perform test.as_user(x);
+  perform test.throws(format($q$select public.admin_reset_mfa(%L, 'x')$q$, u), 'forbidden', 'owner only');
+  perform test.as_user(o);
+  perform test.throws(format($q$select public.admin_reset_mfa(%L, '')$q$, u), 'reason_required', 'reason required');
+  perform test.ok(public.admin_reset_mfa(u, 'verified by phone call') = 1, 'factor removed');
+  perform test.as_superuser();
+  perform test.ok(not exists (select 1 from auth.mfa_factors where user_id = u), 'no factors left');
+  perform test.ok(not exists (select 1 from auth.sessions where user_id = u), 'signed out everywhere');
+  perform test.ok(exists (select 1 from private.audit_log where action = 'account.mfa_reset' and target_user_id = u), 'audited');
+  update private.platform_config set owner_user_id = null;
+end $$;

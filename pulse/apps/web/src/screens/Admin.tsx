@@ -165,6 +165,11 @@ export function Admin() {
                 <span className="list-title truncate" style={{ display: 'block' }}>{u.display_name} <span className="muted small">@{u.username}</span></span>
                 <span className="list-sub">{u.account_state}{u.open_reports ? ` · ${u.open_reports} open report${u.open_reports > 1 ? 's' : ''}` : ''} · joined {relativeTime(u.created_at)}</span>
               </span>
+              <Button className="btn btn-ghost btn-sm" busy={busy === `${u.id}:mfa`} onClick={() => {
+                if (!confirm(`Reset two-step verification for @${u.username}? Only do this after confirming it is really them (e.g. a call). Their password is still needed.`)) return;
+                const reason = askReason(`resetting 2FA for @${u.username}`);
+                if (reason) void act(`${u.id}:mfa`, () => rpc('admin_reset_mfa', { p_user: u.id, p_reason: reason }), 'Two-step verification reset');
+              }}>Reset 2FA</Button>
               {u.account_state === 'active' && <>
                 <Button className="btn btn-ghost btn-sm" busy={busy === `${u.id}:suspended`} onClick={() => setState(u.id, 'suspended', `suspending @${u.username}`)}>Suspend</Button>
                 <Button className="btn btn-danger btn-sm" busy={busy === `${u.id}:banned`} onClick={() => setState(u.id, 'banned', `banning @${u.username}`)}>Ban</Button>

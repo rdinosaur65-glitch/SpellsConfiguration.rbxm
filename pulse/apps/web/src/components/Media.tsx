@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { rpc } from '../lib/supabase';
 import { errorMessage } from '../lib/errors';
 import { chatMediaObjectUrl, snapObjectUrl } from '../lib/media';
@@ -82,12 +83,14 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
     const s = st.current;
     if (s.closed) return;
     s.closed = true;
-    let status: string | null = null;
-    if (s.session) {
-      try { status = await rpc<string>('close_snap_view', { p_snap: snapId, p_session: s.session }); } catch { /* server expires it anyway */ }
-    }
     if (s.src) { URL.revokeObjectURL(s.src); s.src = null; }
-    if (notify) onCloseRef.current(status);
+    // Hide at once; end the server session in the background, then refresh the chat state.
+    const closing = s.session
+      ? rpc<string>('close_snap_view', { p_snap: snapId, p_session: s.session }).catch(() => null)   // server expires it anyway
+      : Promise.resolve(null);
+    if (notify) onCloseRef.current(null);
+    const status = await closing;
+    if (notify && status) onCloseRef.current(status);
   }, [snapId]);
 
   // Close the session if the viewer goes away without an explicit close. (Deferred one
@@ -156,7 +159,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
 
   // Taps close it once something is on screen (a stray tap while loading does not).
   const tapClose = () => { if (src || error) void finish(true); };
-  return (
+  return createPortal(
     <div className="snap-viewer" role="dialog" aria-modal="true" aria-label="Snap" data-testid="snap-viewer" onClick={tapClose}>
       {error ? <p className="snap-msg">{error}</p> : !src ? <Spinner /> : (
         <img src={src} alt="Snap" className="snap-image" data-testid="snap-image" draggable={false}
@@ -170,6 +173,7 @@ export function SnapViewer({ snapId, onClose }: { snapId: string; onClose: (stat
         {view?.allow_saving && src && <button className="btn btn-sm btn-subtle" onClick={() => void save()} disabled={saved}>{saved ? 'Saved' : 'Save'}</button>}
         <button className="btn btn-sm btn-ghost" onClick={() => void finish(true)}>Close</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

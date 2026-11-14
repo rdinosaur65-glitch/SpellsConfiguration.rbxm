@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export function Button({ variant = 'primary', busy, disabled, children, ...rest }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' | 'subtle'; busy?: boolean }) {
@@ -140,12 +141,15 @@ export function Sheet({ label, onClose, children, style }:
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
   }, []);
-  return (
+  // Rendered at the top of the page so no screen's own layer (e.g. the camera) can put
+  // the tab bar above it.
+  return createPortal(
     <div className="sheet-backdrop" onClick={onClose}>
       <div ref={ref} className="sheet" role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
            style={style} onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

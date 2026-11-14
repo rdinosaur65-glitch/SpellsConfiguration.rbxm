@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Icon } from '../components/ui';
+import { Avatar, Banner, Button, Icon, Sheet, Toggle, useToast } from '../components/ui';
+import { rpc } from '../lib/supabase';
+import { errorMessage } from '../lib/errors';
+import { compressImage, uploadMedia } from '../lib/media';
+import { useChatList } from '../lib/live';
 
 type Facing = 'user' | 'environment';
 
 /**
- * Phase 1 camera: live preview, front/back switch, torch where the device reports it,
- * and still capture kept on the device. Sending Snaps (upload + media-url signing)
- * lands with the Phase 3 camera work.
+ * Camera: live preview, front/back switch, torch where the device reports it, still
+ * capture, and sending the photo as a Snap to friends and groups (upload → send_snap).
+ * Nothing leaves the device until "Send" is pressed.
  */
 export function Camera() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -18,6 +22,9 @@ export function Camera() {
   const [state, setState] = useState<'idle' | 'starting' | 'live' | 'denied' | 'unsupported' | 'error'>('idle');
   const [shot, setShot] = useState<string | null>(null);
   const [torch, setTorch] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false });
+  const shotCanvas = useRef<HTMLCanvasElement | null>(null);
+  const [sending, setSending] = useState(false);
+  const [toast, showToast] = useToast();
 
   const stop = useCallback(() => {
     gen.current++;
@@ -67,6 +74,7 @@ export function Camera() {
     if (!ctx) return;
     if (facing === 'user') { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
     ctx.drawImage(v, 0, 0);
+    shotCanvas.current = c;
     setShot(c.toDataURL('image/jpeg', 0.9));
   }
 
@@ -108,12 +116,81 @@ export function Camera() {
       <div className="camera-bottom">
         {state === 'live' && !shot && <button className="shutter" aria-label="Take photo" onClick={capture} />}
         {shot && (
-          <div className="stack" style={{ justifyItems: 'center' }}>
-            <span className="pill">Sending Snaps arrives in the next update. Your photo stays on this device.</span>
-            <a className="btn btn-primary" href={shot} download={`pulse-${Date.now()}.jpg`}>Save to device</a>
+          <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
+            <a className="btn btn-ghost" href={shot} download={`pulse-${Date.now()}.jpg`}>Save to device</a>
+            <Button onClick={() => setSending(true)}>Send to…</Button>
           </div>
         )}
       </div>
+      {sending && shotCanvas.current && <SendSnap canvas={shotCanvas.current} onClose={() => setSending(false)}
+        onSent={(n) => { setSending(false); setShot(null); shotCanvas.current = null; showToast(`Snap sent to ${n}`); }} />}
+      {toast}
     </div>
+  );
+}
+
+const TIMERS: Array<[number | null, string]> = [[1, '1s'], [3, '3s'], [5, '5s'], [10, '10s'], [null, '∞']];
+
+function SendSnap({ canvas, onClose, onSent }: { canvas: HTMLCanvasElement; onClose: () => void; onSent: (summary: string) => void }) {
+  const { items } = useChatList();
+  const [friends, setFriends] = useState<Array<{ user_id: string; username: string; display_name: string; nickname: string | null }> | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [groups, setGroups] = useState<Set<string>>(new Set());
+  const [seconds, setSeconds] = useState<number | null>(5);
+  const [allowSave, setAllowSave] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const clientId = useRef(crypto.randomUUID());   // retries of this send are idempotent
+  useEffect(() => { rpc<typeof friends>('list_friends').then(setFriends).catch((e) => setError(errorMessage(e))); }, []);
+  const groupChats = (items ?? []).filter((c) => c.kind === 'group');
+  const toggle = (set: Set<string>, id: string, on: boolean) => { const n = new Set(set); if (on) n.add(id); else n.delete(id); return n; };
+
+  async function send() {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const asset = await uploadMedia(await compressImage(canvas), 'snap');
+      await rpc('send_snap', {
+        p_media_asset: asset, p_recipients: [...picked], p_groups: [...groups],
+        p_view_seconds: seconds, p_allow_saving: allowSave, p_client_id: clientId.current,
+      });
+      const n = picked.size + groups.size;
+      onSent(n === 1 ? '1 chat' : `${n} chats`);
+    } catch (e) { setError(errorMessage(e)); setBusy(false); }
+  }
+
+  return (
+    <Sheet label="Send Snap" onClose={onClose} style={{ maxHeight: '85vh', overflowY: 'auto', color: 'var(--text)' }}>
+      <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>Send Snap</h2>
+      {error && <Banner>{error}</Banner>}
+      <span className="field-label" style={{ margin: '0 4px' }}>Timer</span>
+      <div className="timer-grid" role="group" aria-label="Snap timer">
+        {TIMERS.map(([v, label]) => (
+          <button key={label} className="chip" aria-pressed={seconds === v} onClick={() => setSeconds(v)}>{label}</button>
+        ))}
+      </div>
+      <Toggle label="Let them save it" description="An in-app permission; screenshots can't be prevented."
+              checked={allowSave} onChange={setAllowSave} />
+      <span className="field-label" style={{ margin: '8px 4px 0' }}>Friends</span>
+      {friends === null ? null : friends.length === 0 ? <p className="muted small">Add friends first.</p> : friends.map((f) => (
+        <label key={f.user_id} className="list-item">
+          <input type="checkbox" checked={picked.has(f.user_id)} onChange={(e) => setPicked(toggle(picked, f.user_id, e.target.checked))}
+                 aria-label={`Send to ${f.nickname ?? f.display_name}`} />
+          <Avatar name={f.nickname ?? f.display_name} size={34} />
+          <span className="grow truncate">{f.nickname ?? f.display_name} <span className="muted small">@{f.username}</span></span>
+        </label>
+      ))}
+      {groupChats.length > 0 && <span className="field-label" style={{ margin: '8px 4px 0' }}>Groups</span>}
+      {groupChats.map((g) => (
+        <label key={g.conversation_id} className="list-item">
+          <input type="checkbox" checked={groups.has(g.conversation_id)}
+                 onChange={(e) => setGroups(toggle(groups, g.conversation_id, e.target.checked))} aria-label={`Send to ${g.title ?? 'group'}`} />
+          <Avatar name={g.title ?? 'Group'} size={34} />
+          <span className="grow truncate">{g.title ?? 'Group'}</span>
+        </label>
+      ))}
+      <Button busy={busy} disabled={picked.size + groups.size === 0} onClick={send}>Send</Button>
+      <Button variant="ghost" onClick={onClose}>Cancel</Button>
+    </Sheet>
   );
 }

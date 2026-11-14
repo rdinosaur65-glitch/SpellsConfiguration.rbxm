@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { rpc, supabase } from './supabase';
 import type { Profile, UserSettings } from './types';
 import { applyAppearance } from './theme';
+import { releaseAllMedia } from './media';
 
 interface AuthState {
   loading: boolean;
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!s) {
       setProfile(null); setSettings(null); setIsOwner(false);
       clearCache();
+      releaseAllMedia();   // in-memory photo copies of the previous account
       return;
     }
     const uid = s.user.id;

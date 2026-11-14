@@ -13,6 +13,9 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     trace: 'off',
     ...devices['Pixel 7'],
+    // Chromium's synthetic camera, so the Camera → Snap flow runs headless.
+    permissions: ['camera'],
+    launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
   },
   webServer: {
     command: 'npm run build && npm run preview',

@@ -24,8 +24,8 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Free-tier guards: registration cap, pools, per-user quotas, egress share, DB-size write guard, daily text quota | ✅ | tests 10, 50, 75 (0014) |
 | Unconfirmed sign-ups purged after 6 h (from the latest confirmation email) and not searchable | ✅ | 0010/0015, tests 70, 75 |
 | Expiry / purge job (`pg_cron`) | ✅ | Steps isolated (one failure no longer undoes the rest), batched; test 75 forces a failure |
-| Storage-janitor Edge Function | 🟠 | SQL contract tested; Deno function not written |
-| media-url Edge Function (signing) | 🟠 | Authorisation RPCs tested; function not written |
+| Storage-janitor Edge Function | ✅ | `supabase/functions/storage-janitor`; pg_cron → pg_net → function (0016, Vault secrets); functions.test.mjs |
+| media-url Edge Function (signing) | ✅ | ≤ 60 s URLs, Snap URLs bound to the viewing session; functions.test.mjs + e2e |
 | Realtime: postgres_changes under RLS | ✅ | e2e; every subscription filtered to the user; DELETE events no longer published (they bypass RLS) |
 | Realtime: private broadcast topic authorisation | ✅ | e2e typing indicator; tests 60, 75 (policies on realtime.messages), 90 |
 | Error monitoring / logging | 🟠 | Error boundary + Supabase logs; no client error table yet |
@@ -64,7 +64,7 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Read status & disappearing modes (after view / 24 h / 7 d / never) | ✅ | e2e: mode switch announced in chat, Delivered → Opened live; mode fixed per message (75) |
 | Edit (15 min), delete tombstones, reply, save | ✅ | edit in e2e |
 | Typing indicators (respect privacy setting) | ✅ | e2e, including the privacy toggle off |
-| Photo/video/voice messages | 🟠 | DB + validation done; needs media-url Edge Function + UI |
+| Photo messages (compressed, EXIF stripped, Data saver aware) | ✅ | e2e. Video/voice: DB ready, UI ⬜ |
 | Reactions UI, message search UI, shared media gallery UI | ⬜ | RPCs tested |
 | Transcription | ⬜ | On-device only; deferred |
 
@@ -72,8 +72,9 @@ Nothing has run against a *hosted* Supabase project yet (none exists; creating o
 | Item | Status | Notes |
 |---|---|---|
 | Snap delivery, timers, one replay, server sessions, saving, expiry | ✅ | DB (incl. concurrency) |
-| Camera preview, front/back, torch (if reported), still capture | ✅ | UI; capture saved locally only |
-| Sending/viewing Snaps in UI, video, editors, multi-clip | ⬜ | Needs media upload + media-url |
+| Camera preview, front/back, torch (if reported), still capture | ✅ | UI; nothing leaves the device until Send |
+| Sending photo Snaps (friends + groups, 1–10 s or ∞, saving permission), viewer with one replay | ✅ | e2e with Chromium's fake camera |
+| Video Snaps, editors, multi-clip | ⬜ | |
 
 ## Phase 4 — Memories (local-first per €0 override)
 | Item | Status |

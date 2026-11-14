@@ -36,7 +36,7 @@ test('two people become friends and chat in real time', async ({ browser }) => {
   // The change is announced in the chat for both people.
   await expect(b.getByTestId('system-message')).toContainText('You changed this chat: Messages are kept');
   await b.getByLabel('Message').fill('hey amy 👋');
-  await b.getByRole('button', { name: 'Send' }).click();
+  await b.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(b.getByTestId('message').last()).not.toContainText('sending');
   await b.getByRole('link', { name: 'Back to chats' }).click();
   await expect(b.getByTestId('chat-row').first()).toContainText('Delivered');

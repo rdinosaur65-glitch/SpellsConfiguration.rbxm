@@ -7,6 +7,8 @@ import { errorMessage } from '../lib/errors';
 import { clockTime } from '../lib/time';
 import type { Message, Participant } from '../lib/types';
 import { Banner, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
+import { ChatImage, SnapViewer } from '../components/Media';
+import { compressImage, uploadMedia } from '../lib/media';
 import { useAuth } from '../lib/auth';
 
 type Expiry = 'after_view' | 'after_view_24h' | 'after_view_7d' | 'never';
@@ -18,9 +20,10 @@ const EXPIRY_TEXT: Record<Expiry, string> = {
 };
 
 /** A message in the UI: server rows plus local optimistic sends. */
-interface UiMessage extends Message { local?: 'sending' | 'failed' }
+interface UiMessage extends Message { local?: 'sending' | 'failed'; preview?: string }
+interface SnapState { snap_id: string; recipient_id: string; status: 'delivered' | 'opened' | 'replayed' | 'expired'; views_used: number }
 
-const COLS = 'id,conversation_id,sender_id,kind,body,reply_to_id,client_msg_id,created_at,edited_at,deleted_at,expires_at';
+const COLS = 'id,conversation_id,sender_id,kind,body,media_asset_id,snap_id,reply_to_id,client_msg_id,created_at,edited_at,deleted_at,expires_at';
 const PAGE = 200;
 
 // Unsent messages survive navigating between chats (in memory only: message text is
@@ -49,6 +52,10 @@ export function Chat() {
   const [menuFor, setMenuFor] = useState<UiMessage | null>(null);
   const [showExpiry, setShowExpiry] = useState(false);
   const [typing, setTyping] = useState<Record<string, number>>({});
+  const [snapStates, setSnapStates] = useState<SnapState[]>([]);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const photoBlobs = useRef(new Map<string, Blob>());
+  const fileRef = useRef<HTMLInputElement>(null);
   const [toast, showToast] = useToast();
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -107,6 +114,13 @@ export function Chat() {
     readTimer.current = setTimeout(doRead, 500);
   }, [doRead]);
 
+  /** Snap view state for this chat: my own row as a recipient, every row as the sender. */
+  const loadSnaps = useCallback(async () => {
+    const { data } = await supabase.from('snap_recipients').select('snap_id,recipient_id,status,views_used')
+      .eq('conversation_id', convId).limit(500);
+    setSnapStates((data ?? []) as SnapState[]);
+  }, [convId]);
+
   /** Load (or reload after a gap) the newest page and reconcile it with what is shown. */
   const refresh = useCallback(async (initial: boolean) => {
     const [c, ppl, msgs] = await Promise.all([
@@ -121,6 +135,7 @@ export function Chat() {
     setConv(c.data as typeof conv);
     setPeople(ppl);
     setHasOlder(rows.length === PAGE);
+    void loadSnaps();
     setMessages((prev) => {
       const oldest = rows[0]?.created_at ?? '';
       const byId = new Map(rows.map((r) => [r.id, r]));
@@ -135,22 +150,26 @@ export function Chat() {
         .sort((a, b) => a.created_at.localeCompare(b.created_at));
     });
     markRead();
-  }, [convId, markRead]);
+  }, [convId, markRead, loadSnaps]);
 
   const deliver = useCallback(async (m: UiMessage) => {
-    outboxPut({ ...m, local: 'sending' });
+    const blob = m.kind === 'photo' ? photoBlobs.current.get(m.client_msg_id) : undefined;
+    if (m.kind === 'text') outboxPut({ ...m, local: 'sending' });
     try {
+      // Photos: upload first (idempotent: same bytes → same asset), then the message.
+      const asset = blob ? await uploadMedia(blob, 'chat') : null;
       // Idempotent: retries reuse client_msg_id, so the server never stores a duplicate.
       const id = await rpc<string>('send_message', {
-        p_conv: m.conversation_id, p_kind: 'text', p_body: m.body, p_client_msg_id: m.client_msg_id,
-        p_media_asset: null, p_reply_to: m.reply_to_id,
+        p_conv: m.conversation_id, p_kind: m.kind, p_body: m.body, p_client_msg_id: m.client_msg_id,
+        p_media_asset: asset, p_reply_to: m.reply_to_id,
       });
+      photoBlobs.current.delete(m.client_msg_id);
       outboxDrop(m.conversation_id, m.client_msg_id);
       setMessages((prev) => prev && (prev ?? []).map((x) => x.client_msg_id === m.client_msg_id && x.sender_id === m.sender_id
         ? { ...x, id: x.local ? id : x.id, local: undefined } : x));
     } catch (e) {
       const offline = navigator.onLine === false || /fetch|network/i.test((e as Error)?.message ?? '');
-      if (offline) outboxPut({ ...m, local: 'failed' }); else outboxDrop(m.conversation_id, m.client_msg_id);
+      if (offline && m.kind === 'text') outboxPut({ ...m, local: 'failed' }); else outboxDrop(m.conversation_id, m.client_msg_id);
       setMessages((prev) => prev && prev.map((x) => x.client_msg_id === m.client_msg_id ? { ...x, local: 'failed' } : x));
       showToast(offline ? 'Offline — it will send when you reconnect.' : errorMessage(e));
     }
@@ -186,6 +205,8 @@ export function Chat() {
           setTyping((t) => { const n = { ...t }; delete n[row.sender_id]; return n; });
         }
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'snap_recipients', filter: `conversation_id=eq.${convId}` },
+          () => { void loadSnaps(); })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `id=eq.${convId}` }, (p) => {
         setConv((c) => c ? { ...c, expiry_mode: (p.new as { expiry_mode: Expiry }).expiry_mode, name: (p.new as { name: string | null }).name } : c);
       })
@@ -214,7 +235,7 @@ export function Chat() {
       // Leaving the chat right after a message arrived: send the pending read now.
       if (readTimer.current) { clearTimeout(readTimer.current); doRead(); }
     };
-  }, [convId, me, upsert, markRead, doRead, refresh, retryOutbox]);
+  }, [convId, me, upsert, markRead, doRead, refresh, retryOutbox, loadSnaps]);
 
   // Expire typing indicators after 5 s of silence.
   useEffect(() => {
@@ -266,6 +287,22 @@ export function Chat() {
     await deliver(m);
   }
 
+  async function sendPhoto(file: File) {
+    let blob: Blob;
+    try { blob = await compressImage(file); } catch (e) { showToast(errorMessage(e)); return; }
+    const clientId = crypto.randomUUID();
+    photoBlobs.current.set(clientId, blob);
+    const m: UiMessage = {
+      id: `local-${clientId}`, conversation_id: convId, sender_id: me, kind: 'photo', body: null, media_asset_id: null,
+      reply_to_id: replyTo?.id ?? null, client_msg_id: clientId, created_at: new Date().toISOString(),
+      edited_at: null, deleted_at: null, expires_at: null, local: 'sending', preview: URL.createObjectURL(blob),
+    };
+    stick.current = true;
+    setMessages((prev) => [...(prev ?? []), m]);
+    setReplyTo(null);
+    await deliver(m);
+  }
+
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
     if (e.key === 'Escape') { setEditing(null); setReplyTo(null); }
@@ -277,6 +314,21 @@ export function Chat() {
   const byId = useMemo(() => new Map((messages ?? []).map((m) => [m.id, m])), [messages]);
   const handleOf = (uid: string) => people.find((p) => p.user_id === uid)?.username;
   const menuExpired = menuFor ? isExpired(menuFor) : false;
+
+  function snapBubble(m: UiMessage) {
+    const rows = snapStates.filter((s) => s.snap_id === m.snap_id);
+    if (m.sender_id === me) {
+      const opened = rows.length > 0 && rows.every((r) => r.status !== 'delivered');
+      return <button className="snap-bubble" disabled data-testid="snap-sent">📸 Snap · {opened ? 'Opened' : 'Delivered'}</button>;
+    }
+    const mine = rows.find((r) => r.recipient_id === me);
+    const canView = mine && (mine.status === 'delivered' || (mine.status === 'opened' && mine.views_used < 2));
+    const label = !mine ? 'Snap' : mine.status === 'delivered' ? 'Tap to view Snap' : canView ? 'Tap to replay' : 'Snap opened';
+    return (
+      <button className="snap-bubble" disabled={!canView} data-testid="snap-received"
+              onClick={() => { if (canView && m.snap_id) setViewing(m.snap_id); }}>📸 {label}</button>
+    );
+  }
 
   return (
     <div className="screen screen-full">
@@ -313,10 +365,16 @@ export function Chat() {
                    data-testid="message">
                 {showAuthor && <span className="msg-author">{nameOf(m.sender_id)}{handleOf(m.sender_id) ? <span className="muted"> @{handleOf(m.sender_id)}</span> : null}</span>}
                 {quoted && <span className="msg-meta">↪ {quoted.deleted_at ? 'deleted message' : (quoted.body ?? '').slice(0, 60)}</span>}
-                <button className={`bubble${m.deleted_at ? ' bubble-deleted' : ''}`} style={{ border: 0, font: 'inherit', textAlign: 'left', cursor: 'pointer' }}
+                {m.kind === 'snap' && !m.deleted_at ? snapBubble(m) : (
+                <button className={`bubble${m.deleted_at ? ' bubble-deleted' : ''}${m.kind === 'photo' && !m.deleted_at ? ' bubble-media' : ''}`}
+                        style={{ border: 0, font: 'inherit', textAlign: 'left', cursor: 'pointer' }}
                         onClick={() => !m.deleted_at && !m.local && setMenuFor(m)}>
-                  {m.deleted_at ? 'Message deleted' : m.kind === 'text' ? m.body : `[${m.kind}]`}
-                </button>
+                  {m.deleted_at ? 'Message deleted' : m.kind === 'text' ? m.body
+                    : m.kind === 'photo' ? (m.preview ? <img className="chat-photo" src={m.preview} alt="Photo you sent" />
+                      : m.media_asset_id ? <ChatImage assetId={m.media_asset_id} dataSaver={settings?.data_saver === true}
+                          alt={mine ? 'Photo you sent' : `Photo from ${nameOf(m.sender_id)}`} /> : 'Photo')
+                    : `[${m.kind}]`}
+                </button>)}
                 <span className="msg-meta">
                   {clockTime(m.created_at)}{m.edited_at && !m.deleted_at ? ' · edited' : ''}
                   {m.local === 'sending' && ' · sending…'}
@@ -338,6 +396,11 @@ export function Chat() {
         </div>
       )}
       <div className="composer">
+        <button className="attach-btn" aria-label="Send a photo" disabled={!conv || Boolean(editing)} onClick={() => fileRef.current?.click()}>
+          <Icon name="image" size={20} />
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" hidden data-testid="photo-input"
+               onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void sendPhoto(f); }} />
         <textarea rows={1} aria-label="Message" placeholder="Message" value={text} maxLength={LIMITS.messageMaxChars}
                   onChange={(e) => onType(e.target.value)} onKeyDown={onKey} disabled={!conv} />
         <button className="send-btn" aria-label={editing ? 'Save edit' : 'Send'} disabled={!text.trim() || !conv} onClick={() => void submit()}>
@@ -385,6 +448,7 @@ export function Chat() {
           <button className="sheet-item" onClick={() => setShowExpiry(false)}>Close</button>
         </Sheet>
       )}
+      {viewing && <SnapViewer snapId={viewing} onClose={() => { setViewing(null); void loadSnaps(); markRead(); }} />}
       {toast}
     </div>
   );

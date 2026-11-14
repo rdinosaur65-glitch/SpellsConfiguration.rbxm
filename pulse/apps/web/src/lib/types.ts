@@ -51,6 +51,8 @@ export interface Message {
   sender_id: string;
   kind: 'text' | 'photo' | 'video' | 'voice' | 'snap' | 'system';
   body: string | null;
+  media_asset_id?: string | null;
+  snap_id?: string | null;
   reply_to_id: string | null;
   client_msg_id: string;
   created_at: string;

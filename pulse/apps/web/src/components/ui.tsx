@@ -85,7 +85,7 @@ export function useToast(): [ReactNode, (msg: string) => void] {
   return [msg ? <div className="toast" role="status">{msg}</div> : null, setMsg];
 }
 
-type IconName = 'camera' | 'chat' | 'friends' | 'settings' | 'back' | 'send' | 'search' | 'plus' |
+type IconName = 'camera' | 'chat' | 'friends' | 'settings' | 'back' | 'send' | 'search' | 'plus' | 'image' |
   'check' | 'close' | 'flip' | 'more' | 'lock';
 const PATHS: Record<IconName, string> = {
   camera: 'M4 8h3l2-3h6l2 3h3v11H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
@@ -101,6 +101,7 @@ const PATHS: Record<IconName, string> = {
   flip: 'M4 9a8 8 0 0 1 14-3l2 2 M20 4v4h-4 M20 15a8 8 0 0 1-14 3l-2-2 M4 20v-4h4',
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
   lock: 'M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3',
+  image: 'M4 5h16v14H4z M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M20 15l-5-5-9 9',
 };
 export function Icon({ name, size = 22, label }: { name: IconName; size?: number; label?: string }) {
   return (

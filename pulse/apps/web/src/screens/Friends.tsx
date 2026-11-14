@@ -72,9 +72,13 @@ export function Friends() {
     if (q.length >= 3) void search(q);
   }
 
+  const opening = useRef(false);
   async function openChat(userId: string) {
+    if (opening.current) return;                 // a double tap opens the chat once
+    opening.current = true;
     try { const conv = await rpc<string>('create_direct_conversation', { p_friend: userId }); nav(`/chats/${conv}`); }
     catch (e) { showToast(errorMessage(e)); }
+    finally { opening.current = false; }
   }
 
   const incoming = requests.filter((r) => r.direction === 'incoming');

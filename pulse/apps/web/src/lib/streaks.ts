@@ -51,9 +51,13 @@ export function useStreaks(): Map<string, Streak> {
 }
 
 /** "I've seen this milestone" — the server records it so the celebration is shown once. */
-export async function ackMilestone(friendId: string): Promise<void> {
-  try { await rpc('ack_streak_milestone', { p_friend: friendId }); } catch { /* shown again next time at worst */ }
+export async function ackMilestone(friendId: string, milestone: number): Promise<void> {
+  dismissedMilestones.add(`${friendId}:${milestone}`);
+  try { await rpc('ack_streak_milestone', { p_friend: friendId }); void refreshStreaks(); } catch { /* shown again next time at worst */ }
 }
+/** Celebrations already shown in this session (until the server's answer arrives). */
+export const dismissedMilestones = new Set<string>();
+export const milestonePending = (s: Streak) => s.milestone_unseen && !dismissedMilestones.has(`${s.friend_id}:${s.milestone}`);
 
 /** Local time of a server moment, e.g. "01:00" or "Sun 01:00". */
 export function localTime(iso: string, now = new Date()): string {

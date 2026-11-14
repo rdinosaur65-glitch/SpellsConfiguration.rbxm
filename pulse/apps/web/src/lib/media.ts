@@ -95,12 +95,17 @@ export async function fetchMedia(req: MediaRequest): Promise<Blob> {
  * budget again. Released on sign-out via releaseAllMedia().
  */
 const blobCache = new Map<string, Promise<string>>();
+const CACHE_MAX = 80;            // most recently used media kept in memory (a long session stays bounded)
 export function chatMediaObjectUrl(assetId: string): Promise<string> {
   let p = blobCache.get(assetId);
-  if (!p) {
-    p = fetchMedia({ asset_id: assetId }).then((b) => URL.createObjectURL(b));
-    p.catch(() => blobCache.delete(assetId));
-    blobCache.set(assetId, p);
+  if (p) { blobCache.delete(assetId); blobCache.set(assetId, p); return p; }   // mark as recently used
+  p = fetchMedia({ asset_id: assetId }).then((b) => URL.createObjectURL(b));
+  p.catch(() => blobCache.delete(assetId));
+  blobCache.set(assetId, p);
+  while (blobCache.size > CACHE_MAX) {
+    const [oldId, oldP] = blobCache.entries().next().value as [string, Promise<string>];
+    blobCache.delete(oldId);
+    void oldP.then((u) => URL.revokeObjectURL(u)).catch(() => {});
   }
   return p;
 }

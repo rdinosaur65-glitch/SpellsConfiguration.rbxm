@@ -100,6 +100,8 @@ async function send(clientId: string): Promise<void> {
     const blob = withMedia ? blobs.get(clientId) : undefined;
     if (withMedia && !blob) throw new Error('invalid_media');
     const asset = blob ? await uploadMedia(blob, 'chat', { durationSeconds: m.duration }) : null;
+    // Signed out (or another account signed in) during the upload: never send under their name.
+    if (gen !== generation || owner !== sender) return;
     const id = await rpc<string>('send_message', {
       p_conv: m.conversation_id, p_kind: m.kind, p_body: m.body, p_client_msg_id: m.client_msg_id,
       p_media_asset: asset, p_reply_to: m.reply_to_id,

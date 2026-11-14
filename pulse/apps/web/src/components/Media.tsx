@@ -38,8 +38,9 @@ export function ChatImage({ assetId, dataSaver, alt }: { assetId: string; dataSa
   }, [assetId, want, attempt]);
 
   if (src) return <img className="chat-photo" src={src} alt={alt} data-testid="chat-photo" />;
-  if (error) return <button className="media-placeholder" onClick={() => setAttempt((n) => n + 1)}>{error} · Retry</button>;
-  if (!want && dataSaver) return <button className="media-placeholder" onClick={() => setWant(true)}>📷 Tap to load photo</button>;
+  // stopPropagation: inside a tappable tile (gallery) these load the photo, they don't open it.
+  if (error) return <button className="media-placeholder" onClick={(e) => { e.stopPropagation(); setAttempt((n) => n + 1); }}>{error} · Retry</button>;
+  if (!want && dataSaver) return <button className="media-placeholder" onClick={(e) => { e.stopPropagation(); setWant(true); }}>📷 Tap to load photo</button>;
   return <span ref={holder} className="media-placeholder" aria-label="Loading photo">{want ? <Spinner small /> : '📷'}</span>;
 }
 

@@ -162,9 +162,11 @@ export function GallerySheet({ convId, dataSaver, onPick, onClose }: {
           <>
             <div className="gallery-grid" data-testid="gallery">
               {items.slice(0, shown).map((it) => it.media_asset_id && (
-                <button key={it.message_id} className="gallery-cell" onClick={() => onPick(it.message_id)} aria-label={`Photo from ${relativeTime(it.created_at)}`}>
+                <div key={it.message_id} className="gallery-cell" role="button" tabIndex={0} onClick={() => onPick(it.message_id)}
+                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(it.message_id); } }}
+                     aria-label={`Photo from ${relativeTime(it.created_at)} — show in chat`}>
                   <ChatImage assetId={it.media_asset_id} dataSaver={dataSaver} alt="" />
-                </button>
+                </div>
               ))}
             </div>
             {items.length > shown && <button className="btn btn-ghost" onClick={() => setShown((n) => n + 12)}>Show more</button>}

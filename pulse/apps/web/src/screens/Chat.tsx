@@ -12,7 +12,7 @@ import { MAX_VOICE_SECONDS, VoiceRecorder, voiceSupported } from '../lib/recorde
 import { compressImage } from '../lib/media';
 import { deliver as deliverQueued, enqueue, onOutbox, pendingFor, retry as retryQueued } from '../lib/outbox';
 import { useAuth } from '../lib/auth';
-import { useStreaks } from '../lib/streaks';
+import { milestonePending, useStreaks } from '../lib/streaks';
 import { MilestoneBanner, StreakBadge, StreakSheet } from '../components/Streak';
 import { GallerySheet, QUICK_REACTIONS, ReactionChips, SearchSheet, useReactions } from '../components/ChatExtras';
 
@@ -84,6 +84,7 @@ export function Chat() {
   reactionsRef.current = reactions;
   const fileRef = useRef<HTMLInputElement>(null);
   const [toast, showToast] = useToast();
+  const [announce, setAnnounce] = useState('');     // screen readers: new incoming messages only
   const streaks = useStreaks();
   const [streakOpen, setStreakOpen] = useState(false);
   const [milestoneShown, setMilestoneShown] = useState<number | null>(null);
@@ -185,15 +186,24 @@ export function Chat() {
       // A row the server did not return is kept only if it is older than a full page (loaded
       // earlier with "Load earlier messages") or arrived live after this refresh began.
       // Anything else has disappeared (expired, deleted for me, or hidden by a block).
+      // (Also on the first load: a message that arrived live, or was confirmed, while it was
+      // in flight must not be replaced by the older snapshot.)
       const kept = (prev ?? []).filter((m) => m.local
-        || (!initial && !byId.has(m.id)
-            && ((full && !gap && m.created_at < oldest) || (liveAt.current.get(m.id) ?? 0) >= started)));
+        || (!byId.has(m.id)
+            && ((!initial && full && !gap && m.created_at < oldest) || (liveAt.current.get(m.id) ?? 0) >= started)));
       const pending = pendingFor(convId).filter((o) => !rows.some((r) => r.client_msg_id === o.client_msg_id && r.sender_id === o.sender_id));
       // Server rows first, so they win over local copies of the same message.
-      const merged = [...rows, ...kept, ...pending];
-      const seen = new Set<string>();
-      return merged.filter((m) => { const k = `${m.sender_id}:${m.client_msg_id}`; if (seen.has(k)) return false; seen.add(k); return true; })
-        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      const merged: UiMessage[] = [...rows, ...kept, ...pending];
+      const seen = new Map<string, UiMessage>();
+      const out: UiMessage[] = [];
+      for (const m of merged) {
+        const k = `${m.sender_id}:${m.client_msg_id}`;
+        const first = seen.get(k);
+        if (!first) { seen.set(k, m); out.push(m); continue; }
+        // Keep the on-device preview of my own photo/voice note (no second download).
+        if (!first.preview && m.preview) { first.preview = m.preview; first.duration = first.duration ?? m.duration; }
+      }
+      return out.sort((a, b) => a.created_at.localeCompare(b.created_at));
     });
     markRead();
   }, [convId, markRead, loadSnaps]);
@@ -271,6 +281,8 @@ export function Chat() {
         upsert(row);
         if (p.eventType === 'INSERT' && row.kind === 'snap') void loadSnaps();
         if (p.eventType === 'INSERT' && row.sender_id !== me) {
+          const who = peopleRef.current.find((x) => x.user_id === row.sender_id);
+          setAnnounce(`New ${row.kind === 'snap' ? 'Snap' : 'message'} from ${who ? (who.nickname ?? who.display_name) : 'someone'}`);
           markRead();
           setTyping((t) => { const n = { ...t }; delete n[row.sender_id]; return n; });
         }
@@ -295,20 +307,29 @@ export function Chat() {
         void refresh(false).catch(() => {});
       });
     // Topic "conv:<id>" is authorised by realtime.messages RLS (members only, blocks respected).
-    const b = supabase.channel(`conv:${convId}`, { config: { private: true, broadcast: { self: false } } })
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        const uid = (payload as { user_id?: string }).user_id;
-        // Only current participants (the payload is client-supplied).
-        if (uid && uid !== me && peopleRef.current.some((p) => p.user_id === uid)) setTyping((t) => ({ ...t, [uid]: Date.now() }));
-      })
-      .subscribe();
-    bcast.current = b;
+    // supabase-js hands back an existing channel with the same topic, even one still leaving
+    // after a quick Back-and-return; wait for that one to be gone, then join afresh.
+    let b: RealtimeChannel | null = null;
+    let gone = false;
+    void (async () => {
+      for (const ch of supabase.getChannels()) if (ch.topic === `realtime:conv:${convId}`) await supabase.removeChannel(ch);
+      if (gone) return;
+      b = supabase.channel(`conv:${convId}`, { config: { private: true, broadcast: { self: false } } })
+        .on('broadcast', { event: 'typing' }, ({ payload }) => {
+          const uid = (payload as { user_id?: string }).user_id;
+          // Only current participants (the payload is client-supplied).
+          if (uid && uid !== me && peopleRef.current.some((p) => p.user_id === uid)) setTyping((t) => ({ ...t, [uid]: Date.now() }));
+        })
+        .subscribe();
+      bcast.current = b;
+    })();
     const onVis = () => { if (document.visibilityState === 'visible') void refresh(false).catch(() => {}); };
     const onOnline = () => { void refresh(false).catch(() => {}); };   // the Shell flushes the queue
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('online', onOnline);
     return () => {
-      void supabase.removeChannel(rows); void supabase.removeChannel(b); bcast.current = null;
+      gone = true;
+      void supabase.removeChannel(rows); if (b) void supabase.removeChannel(b); bcast.current = null;
       document.removeEventListener('visibilitychange', onVis); window.removeEventListener('online', onOnline);
       // Leaving the chat right after a message arrived: send the pending read now.
       if (readTimer.current) { clearTimeout(readTimer.current); doRead(); }
@@ -407,7 +428,7 @@ export function Chat() {
       const target = editing;
       setEditing(null); setText('');
       try { await rpc('edit_message', { p_msg: target.id, p_body: body }); upsert({ ...target, body, edited_at: new Date().toISOString() }, false); }
-      catch (e) { showToast(errorMessage(e)); }
+      catch (e) { showToast(errorMessage(e)); setEditing(target); setText(body); }   // keep what they typed
       return;
     }
     const clientId = crypto.randomUUID();
@@ -440,22 +461,45 @@ export function Chat() {
   }
 
   // Voice messages: tap the mic, talk, then Send (or Cancel). Nothing leaves the phone before Send.
+  // At the time limit the mic stops and the clip waits for Send or Cancel (never sent by itself).
+  const heldVoice = useRef<{ blob: Blob; seconds: number } | null>(null);
+  const [voiceHeld, setVoiceHeld] = useState(false);
   useEffect(() => {
-    if (!recording) return;
+    if (!recording || voiceHeld) return;
     const t = setInterval(() => setRecSeconds(Math.floor(recorder.current?.elapsed() ?? 0)), 250);
     return () => clearInterval(t);
-  }, [recording]);
+  }, [recording, voiceHeld]);
+  // Leaving the app (locking the phone, switching apps) cancels a recording in progress.
+  useEffect(() => {
+    if (!recording) return;
+    const onHidden = () => { if (document.visibilityState === 'hidden') void finishVoice(false); };
+    document.addEventListener('visibilitychange', onHidden);
+    return () => document.removeEventListener('visibilitychange', onHidden);
+  });
   const voiceStarting = useRef<VoiceRecorder | null>(null);
   const [voiceOpening, setVoiceOpening] = useState(false);
   const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; recorder.current?.cancel(); voiceStarting.current?.cancel(); }; }, []);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false; recorder.current?.cancel(); voiceStarting.current?.cancel();
+      // Free on-device previews of sent media (unsent ones still belong to the outbox).
+      for (const m of messagesRef.current ?? []) if (m.preview && !m.local) URL.revokeObjectURL(m.preview);
+    };
+  }, []);
+  async function holdAtLimit(r: VoiceRecorder) {
+    const rec = await r.stop();
+    if (recorder.current !== r || !alive.current) return;
+    heldVoice.current = rec; setVoiceHeld(true); setRecSeconds(MAX_VOICE_SECONDS);
+    showToast('2-minute limit reached — send or cancel your voice note.');
+  }
   async function startVoice() {
     if (recording || voiceStarting.current || !conv) return;     // one at a time, also while the mic opens
     const r = new VoiceRecorder();
     voiceStarting.current = r; setVoiceOpening(true);
     try {
       // The auto-stop belongs to this recorder only: it never touches a later one.
-      await r.start(() => { if (recorder.current === r) void finishVoice(true); else r.cancel(); });
+      await r.start(() => { if (recorder.current === r) void holdAtLimit(r); else r.cancel(); });
     } catch {
       if (voiceStarting.current === r) { voiceStarting.current = null; setVoiceOpening(false); }
       showToast('Allow microphone access to record a voice note.');
@@ -467,10 +511,11 @@ export function Chat() {
   }
   async function finishVoice(send: boolean) {
     const r = recorder.current;
-    recorder.current = null; setRecording(false);
+    const held = heldVoice.current;
+    recorder.current = null; heldVoice.current = null; setRecording(false); setVoiceHeld(false);
     if (!r) return;
     if (!send) { r.cancel(); return; }
-    const rec = await r.stop();
+    const rec = held ?? await r.stop();
     if (!rec || rec.seconds < 0.5) { showToast('Too short — hold on a little longer.'); return; }
     const clientId = crypto.randomUUID();
     const m: UiMessage = {
@@ -493,7 +538,7 @@ export function Chat() {
   const title = !conv ? '' : conv.kind === 'group' ? (conv.name ?? 'Group') : other ? nameOf(other.user_id) : 'Chat';
   const streak = conv?.kind === 'direct' && other ? streaks.get(other.user_id) : undefined;
   // A new milestone in this chat: celebrate once (MilestoneBanner records it as seen).
-  useEffect(() => { if (streak?.milestone_unseen && milestoneShown === null) setMilestoneShown(streak.milestone); },
+  useEffect(() => { if (streak && milestonePending(streak) && milestoneShown === null) setMilestoneShown(streak.milestone); },
     [streak?.milestone_unseen, streak?.milestone, milestoneShown]);
   const typers = Object.keys(typing).map(nameOf);
   const byId = useMemo(() => new Map((messages ?? []).map((m) => [m.id, m])), [messages]);
@@ -528,7 +573,8 @@ export function Chat() {
       )}
       {streak && streakOpen && <StreakSheet streak={streak} name={title} onClose={() => setStreakOpen(false)} />}
       {error && <div style={{ padding: '0 16px' }}><Banner>{error}</Banner></div>}
-      <div className="messages" ref={listRef} onScroll={onScroll} aria-live="polite" data-testid="messages">
+      <div className="sr-only" aria-live="polite">{announce}</div>
+      <div className="messages" ref={listRef} onScroll={onScroll} data-testid="messages">
         {hasOlder && messages && messages.length > 0 && (
           <button className="link-btn small" style={{ alignSelf: 'center', margin: '8px 0' }} disabled={loadingOlder}
                   onClick={() => { stick.current = false; void loadOlder(); }}>
@@ -605,8 +651,8 @@ export function Chat() {
       )}
       {recording ? (
         <div className="composer recording" data-testid="voice-recording">
-          <span className="rec-dot" aria-hidden />
-          <span className="grow" aria-live="polite">Recording {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
+          {!voiceHeld && <span className="rec-dot" aria-hidden />}
+          <span className="grow" aria-live="polite">{voiceHeld ? 'Limit reached ' : 'Recording '}{Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
             <span className="muted small"> / {MAX_VOICE_SECONDS / 60}:00</span></span>
           <button className="btn btn-ghost btn-sm" onClick={() => void finishVoice(false)}>Cancel</button>
           <button className="send-btn" aria-label="Send voice note" onClick={() => void finishVoice(true)}><Icon name="send" size={20} /></button>

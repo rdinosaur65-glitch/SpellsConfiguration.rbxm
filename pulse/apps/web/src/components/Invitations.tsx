@@ -116,7 +116,7 @@ export function InvitationsCard({ onToast, onChange }: { onToast: (m: string) =>
                 </span>
                 <span className="list-sub">
                   {i.status === 'pending' && `Expires ${relativeTime(i.expires_at)}`}
-                  {i.status === 'redeemed' && <>Joined as @{i.redeemed_username ?? 'unknown'} · {relativeTime(i.redeemed_at)}
+                  {i.status === 'redeemed' && <>{i.redeemed_username ? `Joined as @${i.redeemed_username}` : 'Used by an account since deleted'} · {relativeTime(i.redeemed_at)}
                     {i.awaiting_confirmation ? ' · waiting for email confirmation' : ''}</>}
                   {i.status === 'expired' && `Expired ${relativeTime(i.expires_at)}`}
                   {i.status === 'revoked' && `Revoked ${relativeTime(i.revoked_at)}`}

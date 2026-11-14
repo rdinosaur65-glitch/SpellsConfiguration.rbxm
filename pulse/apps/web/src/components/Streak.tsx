@@ -39,7 +39,7 @@ export function StreakSheet({ streak, name, onClose }: { streak: Streak; name: s
 /** A quiet card the first time a milestone is reached; acknowledged at once (never repeated). */
 export function MilestoneBanner({ streak, name, onDismiss }: { streak: Streak; name: string; onDismiss: () => void }) {
   const acked = useRef(false);
-  useEffect(() => { if (!acked.current) { acked.current = true; void ackMilestone(streak.friend_id); } }, [streak.friend_id]);
+  useEffect(() => { if (!acked.current) { acked.current = true; void ackMilestone(streak.friend_id, streak.milestone); } }, [streak.friend_id, streak.milestone]);
   return (
     <div className="milestone" role="status" data-testid="streak-milestone">
       <span className="milestone-burst" aria-hidden="true">🔥</span>

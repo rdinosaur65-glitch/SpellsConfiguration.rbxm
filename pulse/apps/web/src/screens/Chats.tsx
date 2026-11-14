@@ -7,7 +7,7 @@ import type { ChatListItem } from '../lib/types';
 import { Avatar, Banner, Button, Empty, Header, Icon, Sheet, Spinner, useToast } from '../components/ui';
 import { useChatList } from '../lib/live';
 import { useAuth } from '../lib/auth';
-import { useStreaks, type Streak } from '../lib/streaks';
+import { milestonePending, useStreaks, type Streak } from '../lib/streaks';
 import { MilestoneBanner, StreakBadge } from '../components/Streak';
 import { SearchSheet } from '../components/ChatExtras';
 
@@ -38,7 +38,7 @@ export function Chats() {
   // One quiet celebration per new milestone (the server remembers it was seen).
   useEffect(() => {
     if (celebrate || !items) return;
-    const next = [...streaks.values()].find((s) => s.milestone_unseen);
+    const next = [...streaks.values()].find(milestonePending);
     if (next) setCelebrate(next);
   }, [streaks, items, celebrate]);
 

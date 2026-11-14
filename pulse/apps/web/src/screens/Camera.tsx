@@ -250,6 +250,19 @@ const TIMERS: Array<[number | null, string]> = [[1, '1s'], [3, '3s'], [5, '5s'],
 
 type SnapMedia = { kind: 'photo'; canvas: HTMLCanvasElement } | { kind: 'video'; blob: Blob; seconds: number };
 
+// One client id per captured photo/clip and recipient set: reopening the sheet after a
+// slow or lost response retries the same Snap (the server returns it, no duplicate), while
+// changing the recipients makes a new one (nobody is silently left out).
+const snapIds = new WeakMap<object, Map<string, string>>();
+function snapClientId(media: SnapMedia, recipients: string[]): string {
+  const key = media.kind === 'photo' ? media.canvas : media.blob;
+  const byRecipients = snapIds.get(key) ?? new Map<string, string>();
+  snapIds.set(key, byRecipients);
+  const k = [...recipients].sort().join(',');
+  if (!byRecipients.has(k)) byRecipients.set(k, crypto.randomUUID());
+  return byRecipients.get(k)!;
+}
+
 function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () => void; onSent: (summary: string) => void }) {
   const { items } = useChatList();
   const [friends, setFriends] = useState<Array<{ user_id: string; username: string; display_name: string; nickname: string | null }> | null>(null);
@@ -259,7 +272,6 @@ function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () =>
   const [allowSave, setAllowSave] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const clientId = useRef(crypto.randomUUID());   // retries of this send are idempotent
   useEffect(() => { rpc<typeof friends>('list_friends').then(setFriends).catch((e) => setError(errorMessage(e))); }, []);
   const groupChats = (items ?? []).filter((c) => c.kind === 'group');
   const toggle = (set: Set<string>, id: string, on: boolean) => { const n = new Set(set); if (on) n.add(id); else n.delete(id); return n; };
@@ -273,7 +285,8 @@ function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () =>
         : await uploadMedia(media.blob, 'snap', { durationSeconds: media.seconds });
       await rpc('send_snap', {
         p_media_asset: asset, p_recipients: [...picked], p_groups: [...groups],
-        p_view_seconds: media.kind === 'photo' ? seconds : null, p_allow_saving: allowSave, p_client_id: clientId.current,
+        p_view_seconds: media.kind === 'photo' ? seconds : null, p_allow_saving: allowSave,
+        p_client_id: snapClientId(media, [...[...picked].map((x) => `u:${x}`), ...[...groups].map((x) => `g:${x}`)]),
       });
       const n = picked.size + groups.size;
       void refreshStreaks();                       // the server may have just extended a streak
@@ -282,7 +295,7 @@ function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () =>
   }
 
   return (
-    <Sheet label="Send Snap" onClose={onClose} style={{ color: 'var(--text)' }}>
+    <Sheet label="Send Snap" onClose={() => { if (!busy) onClose(); }} style={{ color: 'var(--text)' }}>
       <h2 style={{ fontSize: 18, margin: '4px 4px 8px' }}>Send Snap</h2>
       {error && <Banner>{error}</Banner>}
       {media.kind === 'photo' ? (<>
@@ -314,7 +327,7 @@ function SendSnap({ media, onClose, onSent }: { media: SnapMedia; onClose: () =>
         </label>
       ))}
       <Button busy={busy} disabled={picked.size + groups.size === 0} onClick={send}>Send</Button>
-      <Button variant="ghost" onClick={onClose}>Cancel</Button>
+      <Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
     </Sheet>
   );
 }

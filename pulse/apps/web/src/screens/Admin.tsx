@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { EMAIL_PENDING } from '../lib/features';
 import { formatBytes } from '@pulse/domain';
@@ -60,7 +60,9 @@ export function Admin() {
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, showToast] = useToast();
 
+  const loadSeq = useRef(0), searchSeq = useRef(0);    // only the newest answer may update the screen
   const load = useCallback(async () => {
+    const n = ++loadSeq.current;
     try {
       const [u, r, a, er] = await Promise.all([
         rpc<Usage>('admin_usage_summary'),
@@ -68,14 +70,16 @@ export function Admin() {
         rpc<AuditRow[]>('admin_audit_log', { p_limit: 30 }),
         rpc<ErrorRow[]>('admin_client_errors', { p_limit: 30 }),
       ]);
+      if (n !== loadSeq.current) return;
       setUsage(u); setReports(r); setAudit(a); setErrors(er); setError(null);
-    } catch (e) { setError(errorMessage(e)); setReports((x) => x ?? []); }
+    } catch (e) { if (n === loadSeq.current) { setError(errorMessage(e)); setReports((x) => x ?? []); } }
   }, [status]);
   useEffect(() => { if (isOwner) void load(); }, [isOwner, load]);
 
   const searchUsers = useCallback(async (q: string) => {
-    try { setUsers(await rpc<UserRow[]>('admin_search_users', { p_query: q.trim() || null })); }
-    catch (e) { showToast(errorMessage(e)); }
+    const n = ++searchSeq.current;
+    try { const rows = await rpc<UserRow[]>('admin_search_users', { p_query: q.trim() || null }); if (n === searchSeq.current) setUsers(rows); }
+    catch (e) { if (n === searchSeq.current) showToast(errorMessage(e)); }
   }, [showToast]);
   useEffect(() => {
     if (!isOwner) return;
